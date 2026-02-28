@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import List, Literal
 
 AssetType = Literal["isa", "pension", "general", "cash", "property", "rsu"]
-IncomeSourceType = Literal["state_pension", "db_pension", "other"]
+IncomeSourceType = Literal["state_pension", "db_pension", "employment", "other"]
 
 class Asset(BaseModel):
     id: str

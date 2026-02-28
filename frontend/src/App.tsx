@@ -4,7 +4,7 @@ import { Plus, Trash2, TrendingUp, Save, Download, X } from 'lucide-react'
 
 // Basic types
 type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu'
-type IncomeSourceType = 'state_pension' | 'db_pension' | 'other'
+type IncomeSourceType = 'state_pension' | 'db_pension' | 'employment' | 'other'
 
 interface Asset {
   id: string
@@ -344,6 +344,7 @@ function App() {
                     <select value={income.type} onChange={e => handleUpdateIncome(income.id, 'type', e.target.value as IncomeSourceType)} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
                       <option value="state_pension">State Pension</option>
                       <option value="db_pension">DB Pension</option>
+                      <option value="employment">Employment</option>
                       <option value="other">Other</option>
                     </select>
                   </label>
