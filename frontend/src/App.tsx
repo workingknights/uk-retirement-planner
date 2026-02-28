@@ -59,10 +59,11 @@ function App() {
   const [simulationData, setSimulationData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
-  const [scenarios, setScenarios] = useState<{ id: string, name: string }[]>([])
+  const [scenarios, setScenarios] = useState<{ id: string, name: string, last_modified?: number }[]>([])
   const [showLoadModal, setShowLoadModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saveName, setSaveName] = useState('')
+  const [currentScenarioName, setCurrentScenarioName] = useState('')
 
   const fetchScenarios = async () => {
     try {
@@ -78,16 +79,31 @@ function App() {
 
   const handleSaveScenario = async () => {
     if (!saveName.trim()) return
+
+    // Check if name already exists
+    const existing = scenarios.find(s => s.name.toLowerCase() === saveName.trim().toLowerCase());
+    if (existing) {
+      if (!window.confirm(`A scenario named "${saveName}" already exists. Do you want to overwrite it?`)) {
+        return;
+      }
+    }
+
     try {
       await fetch('http://localhost:8000/api/scenarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: saveName, data: params })
+        body: JSON.stringify({ name: saveName.trim(), data: params })
       })
       setShowSaveModal(false)
+      setCurrentScenarioName(saveName.trim())
       setSaveName('')
       fetchScenarios()
     } catch (e) { console.error('Failed to save scenario', e) }
+  }
+
+  const handleOpenSaveModal = () => {
+    setSaveName(currentScenarioName)
+    setShowSaveModal(true)
   }
 
   const handleLoadScenario = async (id: string) => {
@@ -96,6 +112,7 @@ function App() {
       const data = await res.json()
       if (data.success) {
         setParams(data.data.data)
+        setCurrentScenarioName(data.data.name)
         setShowLoadModal(false)
         setSimulationData(null) // clear previous sim
       }
@@ -217,7 +234,7 @@ function App() {
             <span>Load</span>
           </button>
           <button
-            onClick={() => setShowSaveModal(true)}
+            onClick={handleOpenSaveModal}
             className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
           >
             <Save size={18} />
@@ -452,8 +469,18 @@ function App() {
               ) : (
                 scenarios.map(s => (
                   <div key={s.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 group">
-                    <span className="font-medium text-slate-700 cursor-pointer flex-1" onClick={() => handleLoadScenario(s.id)}>{s.name}</span>
-                    <button onClick={() => handleDeleteScenario(s.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                    <div className="flex-1 cursor-pointer" onClick={() => handleLoadScenario(s.id)}>
+                      <div className="font-medium text-slate-700">{s.name}</div>
+                      {s.last_modified && (
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {new Date(s.last_modified * 1000).toLocaleString('en-GB', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => handleDeleteScenario(s.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2">
                       <Trash2 size={18} />
                     </button>
                   </div>

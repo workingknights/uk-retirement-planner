@@ -43,19 +43,40 @@ def list_scenarios():
         if filename.endswith(".json"):
             filepath = os.path.join(SCENARIOS_DIR, filename)
             try:
+                stat = os.stat(filepath)
                 with open(filepath, "r") as f:
                     content = json.load(f)
                     scenarios.append({
                         "id": content.get("id"),
-                        "name": content.get("name")
+                        "name": content.get("name"),
+                        "last_modified": stat.st_mtime
                     })
             except Exception as e:
                 pass
+    
+    # Sort by last modified descending
+    scenarios.sort(key=lambda x: x["last_modified"], reverse=True)
     return {"success": True, "data": scenarios}
 
 @app.post("/api/scenarios")
 def save_scenario(req: ScenarioSaveRequest):
-    scenario_id = str(uuid.uuid4())
+    # Check if a scenario with the same name already exists
+    scenario_id = None
+    for filename in os.listdir(SCENARIOS_DIR):
+        if filename.endswith(".json"):
+            filepath = os.path.join(SCENARIOS_DIR, filename)
+            try:
+                with open(filepath, "r") as f:
+                    content = json.load(f)
+                    if content.get("name") == req.name:
+                        scenario_id = content.get("id")
+                        break
+            except Exception:
+                pass
+                
+    if not scenario_id:
+        scenario_id = str(uuid.uuid4())
+        
     filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
     
     scenario_doc = {
