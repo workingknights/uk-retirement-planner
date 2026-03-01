@@ -107,6 +107,12 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
     # Build lookup: person_id -> Person
     people = {p.id: p for p in params.people}
 
+    # Track remaining tax-free pension cash per person (2024/25 lifetime limit: £268,275)
+    PENSION_TAX_FREE_LIFETIME_LIMIT = 268_275.0
+    person_tax_free_remaining: Dict[str, float] = {
+        pid: PENSION_TAX_FREE_LIFETIME_LIMIT for pid in people
+    }
+
     assets = [Asset(**a.model_dump()) for a in params.assets]
 
     yearly_data = []
@@ -181,7 +187,8 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             pid = next(iter(people))
                             _attribute_withdrawal_tax(
                                 pid, withdrawal, asset,
-                                person_taxable_income, person_cgt_gains, person_cgt_property_gains
+                                person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                person_tax_free_remaining
                             )
                     else:
                         for ownership in asset.owners:
@@ -191,7 +198,8 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             share_amount = withdrawal * ownership.share
                             _attribute_withdrawal_tax(
                                 pid, share_amount, asset,
-                                person_taxable_income, person_cgt_gains, person_cgt_property_gains
+                                person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                person_tax_free_remaining
                             )
 
         # 5. Compute tax per person
@@ -240,12 +248,18 @@ def _attribute_withdrawal_tax(
     person_taxable_income: Dict[str, float],
     person_cgt_gains: Dict[str, float],
     person_cgt_property_gains: Dict[str, float],
+    person_tax_free_remaining: Dict[str, float],
 ) -> None:
     """Attribute withdrawal to the correct tax bucket for a person."""
     if _is_tax_free_withdrawal(asset):
         pass  # ISA, cash – no tax
     elif _is_pension_withdrawal(asset):
-        person_taxable_income[pid] = person_taxable_income[pid] + amount
+        # Apply 25% tax-free allowance (UFPLS) up to the £268,275 lifetime limit
+        tax_free_available = person_tax_free_remaining.get(pid, 0.0)
+        tax_free_portion = min(amount * 0.25, tax_free_available)
+        taxable_portion = amount - tax_free_portion
+        person_tax_free_remaining[pid] = tax_free_available - tax_free_portion
+        person_taxable_income[pid] = person_taxable_income[pid] + taxable_portion
     elif _is_cgt_asset(asset):
         person_cgt_gains[pid] = person_cgt_gains[pid] + amount
     elif _is_property_cgt(asset):
