@@ -12,6 +12,7 @@ class Asset(BaseModel):
     annual_growth_rate: float
     annual_contribution: float
     is_withdrawable: bool = True
+    max_annual_withdrawal: float | None = None  # Optional cap, e.g. £15,000 for RSU CGT reasons
 
 class IncomeSource(BaseModel):
     id: str

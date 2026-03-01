@@ -14,6 +14,7 @@ interface Asset {
   annual_growth_rate: number
   annual_contribution: number
   is_withdrawable: boolean
+  max_annual_withdrawal: number | null
 }
 
 interface IncomeSource {
@@ -43,15 +44,15 @@ const defaultParams: SimulationParams = {
   inflation_rate: 2.5,
   desired_annual_income: 40000,
   assets: [
-    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true },
-    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true },
-    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false }
+    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null },
+    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null },
+    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null }
   ],
   incomes: [
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100 },
     { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100 }
   ],
-  withdrawal_priority: ['cash', 'general', 'isa', 'pension']
+  withdrawal_priority: ['cash', 'general', 'rsu', 'isa', 'pension']
 }
 
 function App() {
@@ -177,7 +178,8 @@ function App() {
       balance: 0,
       annual_growth_rate: 5.0,
       annual_contribution: 0,
-      is_withdrawable: true
+      is_withdrawable: true,
+      max_annual_withdrawal: null,
     }
     setParams(prev => ({ ...prev, assets: [...prev.assets, newAsset] }))
   }
@@ -320,6 +322,18 @@ function App() {
                     <input type="checkbox" checked={asset.is_withdrawable} onChange={e => handleUpdateAsset(asset.id, 'is_withdrawable', e.target.checked)} className="rounded border-slate-300" />
                     <span>Use to fund retirement income</span>
                   </label>
+                  {asset.is_withdrawable && (
+                    <label className="block text-xs text-slate-500 col-span-2">
+                      Max Annual Withdrawal (£, optional CGT cap)
+                      <input
+                        type="number"
+                        placeholder="No limit"
+                        value={asset.max_annual_withdrawal ?? ''}
+                        onChange={e => handleUpdateAsset(asset.id, 'max_annual_withdrawal', e.target.value === '' ? null : Number(e.target.value))}
+                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
             ))}

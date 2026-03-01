@@ -57,7 +57,9 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                 if remaining_shortfall <= 0:
                     break
                 if asset.balance > 0:
-                    withdrawal = min(asset.balance, remaining_shortfall)
+                    # Respect optional annual withdrawal cap (e.g. CGT limit for RSUs)
+                    max_draw = asset.max_annual_withdrawal if asset.max_annual_withdrawal is not None else float('inf')
+                    withdrawal = min(asset.balance, remaining_shortfall, max_draw)
                     asset.balance -= withdrawal
                     asset_withdrawals[asset.id] = withdrawal
                     remaining_shortfall -= withdrawal
