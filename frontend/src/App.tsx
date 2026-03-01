@@ -6,6 +6,16 @@ import { Plus, Trash2, TrendingUp, Save, Download, X } from 'lucide-react'
 type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu'
 type IncomeSourceType = 'state_pension' | 'db_pension' | 'employment' | 'other'
 
+interface Person {
+  id: string
+  name: string
+}
+
+interface AssetOwnership {
+  person_id: string
+  share: number // 0.0 to 1.0
+}
+
 interface Asset {
   id: string
   name: string
@@ -15,6 +25,7 @@ interface Asset {
   annual_contribution: number
   is_withdrawable: boolean
   max_annual_withdrawal: number | null
+  owners: AssetOwnership[]
 }
 
 interface IncomeSource {
@@ -24,6 +35,7 @@ interface IncomeSource {
   amount: number
   start_age: number
   end_age: number
+  person_id: string | null
 }
 
 interface SimulationParams {
@@ -32,6 +44,7 @@ interface SimulationParams {
   life_expectancy: number
   inflation_rate: number
   desired_annual_income: number
+  people: Person[]
   assets: Asset[]
   incomes: IncomeSource[]
   withdrawal_priority: AssetType[]
@@ -43,14 +56,17 @@ const defaultParams: SimulationParams = {
   life_expectancy: 90,
   inflation_rate: 2.5,
   desired_annual_income: 40000,
+  people: [
+    { id: 'p1', name: 'Person 1' }
+  ],
   assets: [
-    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null },
-    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null },
-    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null }
+    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] },
+    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] },
+    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] }
   ],
   incomes: [
-    { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100 },
-    { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100 }
+    { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
+    { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100, person_id: 'p1' }
   ],
   withdrawal_priority: ['cash', 'general', 'rsu', 'isa', 'pension']
 }
@@ -180,6 +196,7 @@ function App() {
       annual_contribution: 0,
       is_withdrawable: true,
       max_annual_withdrawal: null,
+      owners: [],
     }
     setParams(prev => ({ ...prev, assets: [...prev.assets, newAsset] }))
   }
@@ -202,7 +219,8 @@ function App() {
       type: 'other',
       amount: 0,
       start_age: 60,
-      end_age: 100
+      end_age: 100,
+      person_id: params.people.length > 0 ? params.people[0].id : null,
     }
     setParams(prev => ({ ...prev, incomes: [...prev.incomes, newIncome] }))
   }
@@ -257,6 +275,29 @@ function App() {
         <div className="space-y-6 lg:col-span-1 border-r border-slate-200 pr-8">
 
           <section className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-slate-800">Household</h2>
+              <button onClick={() => {
+                const newPerson: Person = { id: Math.random().toString(36), name: 'New Person' }
+                setParams(prev => ({ ...prev, people: [...prev.people, newPerson] }))
+              }} className="text-indigo-600 hover:text-indigo-800"><Plus size={20} /></button>
+            </div>
+            {params.people.map(person => (
+              <div key={person.id} className="flex items-center space-x-2">
+                <input
+                  value={person.name}
+                  onChange={e => setParams(prev => ({ ...prev, people: prev.people.map(p => p.id === person.id ? { ...p, name: e.target.value } : p) }))}
+                  className="flex-1 rounded-md border-slate-300 shadow-sm p-2 border text-sm"
+                />
+                <button onClick={() => setParams(prev => ({ ...prev, people: prev.people.filter(p => p.id !== person.id) }))} className="text-slate-400 hover:text-red-500">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+            {params.people.length === 0 && <p className="text-xs text-slate-400">Add people to enable tax modelling.</p>}
+          </section>
+
+          <section className="space-y-4 pt-6 border-t border-slate-200">
             <h2 className="text-xl font-semibold text-slate-800">Parameters</h2>
             <div className="space-y-3">
               <label className="block text-sm font-medium text-slate-700">
@@ -334,6 +375,32 @@ function App() {
                       />
                     </label>
                   )}
+                  {params.people.length > 0 && (
+                    <div className="col-span-2 mt-1 space-y-1">
+                      <p className="text-xs font-medium text-slate-500">Ownership</p>
+                      {params.people.map(person => {
+                        const own = asset.owners.find(o => o.person_id === person.id)
+                        return (
+                          <div key={person.id} className="flex items-center space-x-2">
+                            <span className="text-xs text-slate-600 w-24 truncate">{person.name}</span>
+                            <input
+                              type="number" min="0" max="100" step="1"
+                              placeholder="0"
+                              value={own ? Math.round(own.share * 100) : ''}
+                              onChange={e => {
+                                const pct = e.target.value === '' ? 0 : Number(e.target.value) / 100
+                                const updated = asset.owners.filter(o => o.person_id !== person.id)
+                                if (pct > 0) updated.push({ person_id: person.id, share: pct })
+                                handleUpdateAsset(asset.id, 'owners', updated)
+                              }}
+                              className="w-16 rounded border-slate-300 p-1 border text-sm"
+                            />
+                            <span className="text-xs text-slate-400">%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -374,6 +441,19 @@ function App() {
                     End Age
                     <input type="number" value={income.end_age} onChange={e => handleUpdateIncome(income.id, 'end_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
                   </label>
+                  {params.people.length > 0 && (
+                    <label className="block text-xs text-slate-500 col-span-2">
+                      Owner
+                      <select
+                        value={income.person_id ?? ''}
+                        onChange={e => handleUpdateIncome(income.id, 'person_id', e.target.value || null)}
+                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                      >
+                        <option value="">Unassigned</option>
+                        {params.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                 </div>
               </div>
             ))}
@@ -440,6 +520,40 @@ function App() {
                   </ResponsiveContainer>
                 </div>
               </div>
+
+              {params.people.length > 0 && (() => {
+                const taxData = simulationData.map((year: any) => {
+                  const row: any = { age: year.age }
+                  params.people.forEach(p => {
+                    row[`tax_${p.name}`] = year.tax_breakdown?.[p.name]?.total ?? 0
+                  })
+                  return row
+                })
+                return (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">Estimated Tax Liability</h3>
+                    <p className="text-xs text-slate-500 mb-4">Income Tax + CGT per person (2024/25 rates, simplified).</p>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={taxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="age" tick={{ fontSize: 12 }} />
+                          <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Legend />
+                          {params.people.map((p, idx) => {
+                            const hue = (idx * 80 + 200) % 360
+                            const color = `hsl(${hue}, 65%, 45%)`
+                            return (
+                              <Area key={p.id} type="monotone" dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" stroke={color} fill={color} fillOpacity={0.6} />
+                            )
+                          })}
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )
+              })()}
             </>
           )}
         </div>
