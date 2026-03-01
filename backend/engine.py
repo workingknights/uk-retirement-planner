@@ -182,6 +182,11 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         for asset in assets:
             if asset.type == "general" and asset.dividend_yield:
                 dividends = asset.balance * (asset.dividend_yield / 100.0)
+                
+                # Dividends contribute to generated income
+                generated_income += dividends
+                income_breakdown[f"Dividends: {asset.name}"] = dividends
+
                 if not asset.owners:
                     if people:
                         pid = next(iter(people))
