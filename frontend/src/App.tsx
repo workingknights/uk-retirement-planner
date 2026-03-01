@@ -3,7 +3,7 @@ import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 import { Plus, Trash2, TrendingUp, Save, Download, X } from 'lucide-react'
 
 // Basic types
-type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu'
+type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu' | 'premium_bonds'
 type IncomeSourceType = 'state_pension' | 'db_pension' | 'employment' | 'other'
 
 interface Person {
@@ -68,7 +68,7 @@ const defaultParams: SimulationParams = {
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
     { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100, person_id: 'p1' }
   ],
-  withdrawal_priority: ['cash', 'general', 'rsu', 'isa', 'pension']
+  withdrawal_priority: ['cash', 'premium_bonds', 'general', 'rsu', 'isa', 'pension']
 }
 
 function App() {
@@ -341,6 +341,7 @@ function App() {
                     }} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
                       <option value="pension">Pension</option>
                       <option value="isa">ISA</option>
+                      <option value="premium_bonds">Premium Bonds</option>
                       <option value="general">GIA</option>
                       <option value="cash">Cash</option>
                       <option value="property">Property</option>

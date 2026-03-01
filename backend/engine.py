@@ -73,8 +73,8 @@ def calculate_uk_cgt(gains: float, taxable_income: float, is_property: bool = Fa
 # ─────────────────────────────────────────────
 
 def _is_tax_free_withdrawal(asset: Asset) -> bool:
-    """ISA and cash withdrawals are tax-free."""
-    return asset.type in ("isa", "cash")
+    """ISA, Cash, and Premium Bond withdrawals are tax-free."""
+    return asset.type in ("isa", "cash", "premium_bonds")
 
 
 def _is_pension_withdrawal(asset: Asset) -> bool:

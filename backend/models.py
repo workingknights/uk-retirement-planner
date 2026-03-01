@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Literal, Optional
 
-AssetType = Literal["isa", "pension", "general", "cash", "property", "rsu"]
+AssetType = Literal["isa", "pension", "general", "cash", "property", "rsu", "premium_bonds"]
 IncomeSourceType = Literal["state_pension", "db_pension", "employment", "other"]
 
 class Person(BaseModel):
