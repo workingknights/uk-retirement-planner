@@ -22,6 +22,7 @@ class Asset(BaseModel):
     is_withdrawable: bool = True
     max_annual_withdrawal: float | None = None  # Optional cap, e.g. £15,000 for RSU CGT reasons
     owners: List[AssetOwnership] = []  # empty = unassigned/whole household
+    dividend_yield: float | None = None  # Annual dividend yield % (GIA only)
 
 class IncomeSource(BaseModel):
     id: str

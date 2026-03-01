@@ -26,6 +26,7 @@ interface Asset {
   is_withdrawable: boolean
   max_annual_withdrawal: number | null
   owners: AssetOwnership[]
+  dividend_yield: number | null
 }
 
 interface IncomeSource {
@@ -60,9 +61,9 @@ const defaultParams: SimulationParams = {
     { id: 'p1', name: 'Person 1' }
   ],
   assets: [
-    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] },
-    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] },
-    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }] }
+    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null },
+    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null },
+    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null }
   ],
   incomes: [
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
@@ -197,6 +198,7 @@ function App() {
       is_withdrawable: true,
       max_annual_withdrawal: null,
       owners: [],
+      dividend_yield: null,
     }
     setParams(prev => ({ ...prev, assets: [...prev.assets, newAsset] }))
   }
@@ -372,6 +374,19 @@ function App() {
                         placeholder="No limit"
                         value={asset.max_annual_withdrawal ?? ''}
                         onChange={e => handleUpdateAsset(asset.id, 'max_annual_withdrawal', e.target.value === '' ? null : Number(e.target.value))}
+                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                      />
+                    </label>
+                  )}
+                  {asset.type === 'general' && (
+                    <label className="block text-xs text-slate-500 col-span-2">
+                      Dividend Yield (% of balance, taxable annually)
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 3.5"
+                        value={asset.dividend_yield ?? ''}
+                        onChange={e => handleUpdateAsset(asset.id, 'dividend_yield', e.target.value === '' ? null : Number(e.target.value))}
                         className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
                       />
                     </label>

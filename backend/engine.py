@@ -68,6 +68,27 @@ def calculate_uk_cgt(gains: float, taxable_income: float, is_property: bool = Fa
     return round(in_basic * rate_basic + in_higher * rate_higher, 2)
 
 
+DIVIDEND_ALLOWANCE = 500  # £500 for 2024/25
+
+
+def calculate_uk_dividend_tax(dividends: float, taxable_income: float) -> float:
+    """Compute UK dividend tax given dividends received and other taxable income (2024/25)."""
+    net_dividends = max(0.0, dividends - DIVIDEND_ALLOWANCE)
+    if net_dividends <= 0:
+        return 0.0
+
+    # Dividends sit on top of income; determine which rate band they fall into
+    remaining_basic = max(0.0, BASIC_RATE_LIMIT - taxable_income)
+    remaining_higher = max(0.0, HIGHER_RATE_LIMIT - max(BASIC_RATE_LIMIT, taxable_income))
+
+    in_basic = min(net_dividends, remaining_basic)
+    remainder = net_dividends - in_basic
+    in_higher = min(remainder, remaining_higher)
+    in_additional = max(0.0, remainder - remaining_higher)
+
+    return round(in_basic * 0.0875 + in_higher * 0.3375 + in_additional * 0.3935, 2)
+
+
 # ─────────────────────────────────────────────
 # Asset tax treatment helpers
 # ─────────────────────────────────────────────
@@ -129,10 +150,11 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         generated_income = 0.0
         income_breakdown: Dict[str, float] = {}
 
-        # Per-person taxable income & CGT gains accumulators
+        # Per-person taxable income, CGT gains, and dividend accumulators
         person_taxable_income: Dict[str, float] = {pid: 0.0 for pid in people}
         person_cgt_gains: Dict[str, float] = {pid: 0.0 for pid in people}
         person_cgt_property_gains: Dict[str, float] = {pid: 0.0 for pid in people}
+        person_dividend_income: Dict[str, float] = {pid: 0.0 for pid in people}
 
         for inc in params.incomes:
             if inc.start_age <= age <= inc.end_age:
@@ -155,6 +177,22 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
             asset.balance += growth
             if age < retirement_age:
                 asset.balance += asset.annual_contribution
+
+        # 3b. Attribute GIA dividends (taxable each year regardless of retirement)
+        for asset in assets:
+            if asset.type == "general" and asset.dividend_yield:
+                dividends = asset.balance * (asset.dividend_yield / 100.0)
+                if not asset.owners:
+                    if people:
+                        pid = next(iter(people))
+                        person_dividend_income[pid] = person_dividend_income[pid] + dividends
+                else:
+                    for ownership in asset.owners:
+                        pid = ownership.person_id
+                        if pid in people:
+                            person_dividend_income[pid] = (
+                                person_dividend_income[pid] + dividends * ownership.share
+                            )
 
         # 4. Withdraw from assets if income shortfall
         shortfall = max(0.0, required_income - generated_income)
@@ -208,18 +246,22 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
             taxable_inc = person_taxable_income[pid]
             cgt_gains = person_cgt_gains[pid]
             prop_gains = person_cgt_property_gains[pid]
+            dividends = person_dividend_income[pid]
 
             income_tax = calculate_uk_income_tax(taxable_inc)
             cgt = calculate_uk_cgt(cgt_gains, taxable_inc, is_property=False)
             property_cgt = calculate_uk_cgt(prop_gains, taxable_inc + cgt_gains, is_property=True)
+            dividend_tax = calculate_uk_dividend_tax(dividends, taxable_inc)
 
             person_tax[person.name] = {
                 "income_tax": income_tax,
                 "cgt": cgt,
                 "property_cgt": property_cgt,
-                "total": round(income_tax + cgt + property_cgt, 2),
+                "dividend_tax": dividend_tax,
+                "total": round(income_tax + cgt + property_cgt + dividend_tax, 2),
                 "taxable_income": round(taxable_inc, 2),
                 "cgt_gains": round(cgt_gains, 2),
+                "dividends": round(dividends, 2),
             }
 
         # 6. Record state for this year
