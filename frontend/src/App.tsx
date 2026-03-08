@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X } from 'lucide-react'
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, LineChart } from 'recharts'
+import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp } from 'lucide-react'
+import React from 'react'
 
 // Basic types
 type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu' | 'premium_bonds'
 type IncomeSourceType = 'state_pension' | 'db_pension' | 'employment' | 'other'
+type WithdrawalStrategy = 'sequential' | 'blended'
+
+interface BlendedStrategyParams {
+  isa_drawdown_pct: number
+  pension_drawdown_pct: number
+  isa_topup_from_pension: number
+}
 
 interface Person {
   id: string
@@ -14,6 +22,12 @@ interface Person {
 interface AssetOwnership {
   person_id: string
   share: number // 0.0 to 1.0
+}
+
+interface LifeEvent {
+  id: string
+  name: string
+  age: number
 }
 
 interface Asset {
@@ -48,7 +62,17 @@ interface SimulationParams {
   people: Person[]
   assets: Asset[]
   incomes: IncomeSource[]
+  life_events: LifeEvent[]
   withdrawal_priority: AssetType[]
+  withdrawal_strategy: WithdrawalStrategy
+  blended_params: BlendedStrategyParams | null
+}
+
+interface WhatIfScenario {
+  id: string
+  name: string
+  inflationOffset: number // e.g. +1.0 for 1% higher inflation
+  growthOffset: number // e.g. -1.0 for 1% lower asset growth
 }
 
 const defaultParams: SimulationParams = {
@@ -69,13 +93,23 @@ const defaultParams: SimulationParams = {
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
     { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100, person_id: 'p1' }
   ],
-  withdrawal_priority: ['cash', 'premium_bonds', 'general', 'rsu', 'isa', 'pension']
+  life_events: [
+    { id: '1', name: 'Retirement (P1)', age: 60 },
+    { id: '2', name: 'Downsize Home', age: 75 }
+  ],
+  withdrawal_priority: ['cash', 'premium_bonds', 'general', 'rsu', 'isa', 'pension'],
+  withdrawal_strategy: 'sequential',
+  blended_params: null,
 }
 
 function App() {
   const [params, setParams] = useState<SimulationParams>(defaultParams)
+  const [whatIfs, setWhatIfs] = useState<WhatIfScenario[]>([])
+
   const [simulationData, setSimulationData] = useState<any>(null)
+  const [whatIfData, setWhatIfData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(false)
+  const [assetsExpanded, setAssetsExpanded] = useState(false)
 
   const [scenarios, setScenarios] = useState<{ id: string, name: string, last_modified?: number }[]>([])
   const [showLoadModal, setShowLoadModal] = useState(false)
@@ -147,15 +181,51 @@ function App() {
   const handleSimulate = async () => {
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/simulate', {
+      // 1. Fetch base scenario
+      const baseResponse = await fetch('http://localhost:8000/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
       })
-      const data = await response.json()
-      if (data.success) {
-        setSimulationData(data.data.timeline)
+      const baseData = await baseResponse.json()
+      if (baseData.success) {
+        setSimulationData(baseData.data.timeline)
       }
+
+      // 2. Fetch what-if scenarios concurrently
+      if (whatIfs.length > 0) {
+        const whatIfPromises = whatIfs.map(async (scenario) => {
+          // Create modified params for this scenario
+          const scenarioParams: SimulationParams = {
+            ...params,
+            inflation_rate: Number((Number(params.inflation_rate) + Number(scenario.inflationOffset)).toFixed(2)),
+            assets: params.assets.map(a => ({
+              ...a,
+              annual_growth_rate: Number((Number(a.annual_growth_rate) + Number(scenario.growthOffset)).toFixed(2))
+            }))
+          }
+
+          const response = await fetch('http://localhost:8000/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(scenarioParams)
+          })
+          const data = await response.json()
+          return { id: scenario.id, timeline: data.success ? data.data.timeline : null }
+        })
+
+        const whatIfResults = await Promise.all(whatIfPromises)
+        const newWhatIfData: Record<string, any[]> = {}
+        whatIfResults.forEach(res => {
+          if (res.timeline) {
+            newWhatIfData[res.id] = res.timeline
+          }
+        })
+        setWhatIfData(newWhatIfData)
+      } else {
+        setWhatIfData({}) // clear if none
+      }
+
     } catch (error) {
       console.error('Failed to simulate', error)
     } finally {
@@ -238,6 +308,46 @@ function App() {
     setParams(prev => ({ ...prev, incomes: prev.incomes.filter(i => i.id !== id) }))
   }
 
+  const handleAddLifeEvent = () => {
+    const newEvent: LifeEvent = {
+      id: Math.random().toString(),
+      name: 'New Event',
+      age: 65,
+    }
+    setParams(prev => ({ ...prev, life_events: [...prev.life_events, newEvent] }))
+  }
+
+  const handleUpdateLifeEvent = (id: string, field: keyof LifeEvent, value: any) => {
+    setParams(prev => ({
+      ...prev,
+      life_events: prev.life_events.map(e => e.id === id ? { ...e, [field]: value } : e)
+    }))
+  }
+
+  const handleRemoveLifeEvent = (id: string) => {
+    setParams(prev => ({ ...prev, life_events: prev.life_events.filter(e => e.id !== id) }))
+  }
+
+  const handleAddWhatIf = () => {
+    // Max 3 scenarios for performance/UI clarity
+    if (whatIfs.length >= 3) return;
+    const newWhatIf: WhatIfScenario = {
+      id: Math.random().toString(),
+      name: `Scenario ${String.fromCharCode(65 + whatIfs.length)}`, // A, B, C...
+      inflationOffset: 0,
+      growthOffset: 0,
+    }
+    setWhatIfs(prev => [...prev, newWhatIf])
+  }
+
+  const handleUpdateWhatIf = (id: string, field: keyof WhatIfScenario, value: any) => {
+    setWhatIfs(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))
+  }
+
+  const handleRemoveWhatIf = (id: string) => {
+    setWhatIfs(prev => prev.filter(s => s.id !== id))
+  }
+
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
       <header className="flex items-center justify-between">
@@ -273,17 +383,17 @@ function App() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="space-y-6 lg:col-span-1 border-r border-slate-200 pr-8">
-
-          <section className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">Household</h2>
-              <button onClick={() => {
-                const newPerson: Person = { id: Math.random().toString(36), name: 'New Person' }
-                setParams(prev => ({ ...prev, people: [...prev.people, newPerson] }))
-              }} className="text-indigo-600 hover:text-indigo-800"><Plus size={20} /></button>
-            </div>
+      {/* Top Row: Household & Parameters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+        <section className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold text-slate-800">Household</h2>
+            <button onClick={() => {
+              const newPerson: Person = { id: Math.random().toString(36), name: 'New Person' }
+              setParams(prev => ({ ...prev, people: [...prev.people, newPerson] }))
+            }} className="text-indigo-600 hover:text-indigo-800"><Plus size={20} /></button>
+          </div>
+          <div className="space-y-3">
             {params.people.map(person => (
               <div key={person.id} className="flex items-center space-x-2">
                 <input
@@ -297,38 +407,79 @@ function App() {
               </div>
             ))}
             {params.people.length === 0 && <p className="text-xs text-slate-400">Add people to enable tax modelling.</p>}
-          </section>
+          </div>
+        </section>
 
-          <section className="space-y-4 pt-6 border-t border-slate-200">
-            <h2 className="text-xl font-semibold text-slate-800">Parameters</h2>
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-700">
-                Current Age
-                <input type="number" value={params.current_age} onChange={e => updateParam('current_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Retirement Age
-                <input type="number" value={params.retirement_age} onChange={e => updateParam('retirement_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Desired Annual Income (Today's Value)
-                <input type="number" value={params.desired_annual_income} onChange={e => updateParam('desired_annual_income', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Inflation Rate (%)
-                <input type="number" step="0.1" value={params.inflation_rate} onChange={e => updateParam('inflation_rate', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-              </label>
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-800">Parameters</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block text-sm font-medium text-slate-700">
+              Current Age
+              <input type="number" value={params.current_age} onChange={e => updateParam('current_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Retirement Age
+              <input type="number" value={params.retirement_age} onChange={e => updateParam('retirement_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Desired Annual Income (Today's Value)
+              <input type="number" value={params.desired_annual_income} onChange={e => updateParam('desired_annual_income', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Inflation Rate (%)
+              <input type="number" step="0.1" value={params.inflation_rate} onChange={e => updateParam('inflation_rate', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700 col-span-2">
+              Withdrawal Strategy
+              <select value={params.withdrawal_strategy} onChange={e => {
+                const strategy = e.target.value as WithdrawalStrategy;
+                updateParam('withdrawal_strategy', strategy);
+                if (strategy === 'blended' && !params.blended_params) {
+                  updateParam('blended_params', { isa_drawdown_pct: 4.0, pension_drawdown_pct: 5.0, isa_topup_from_pension: 20000 });
+                }
+              }} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                <option value="sequential">Sequential (Priority Order)</option>
+                <option value="blended">Blended Tax-Optimised</option>
+              </select>
+            </label>
+          </div>
+          {params.withdrawal_strategy === 'blended' && params.blended_params && (
+            <div className="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200 space-y-2">
+              <p className="text-xs text-indigo-600 font-semibold">Blended Strategy Settings</p>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block text-xs text-slate-600">
+                  ISA Drawdown (%)
+                  <input type="number" step="0.5" value={params.blended_params.isa_drawdown_pct} onChange={e => updateParam('blended_params', { ...params.blended_params!, isa_drawdown_pct: Number(e.target.value) })} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                </label>
+                <label className="block text-xs text-slate-600">
+                  Pension Drawdown (%)
+                  <input type="number" step="0.5" value={params.blended_params.pension_drawdown_pct} onChange={e => updateParam('blended_params', { ...params.blended_params!, pension_drawdown_pct: Number(e.target.value) })} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                </label>
+                <label className="block text-xs text-slate-600">
+                  ISA Top-up (£/yr)
+                  <input type="number" step="1000" value={params.blended_params.isa_topup_from_pension} onChange={e => updateParam('blended_params', { ...params.blended_params!, isa_topup_from_pension: Number(e.target.value) })} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                </label>
+              </div>
+              <p className="text-[10px] text-indigo-400 italic">From Apr 2027 pensions are subject to IHT — recycling into ISA is more tax-efficient</p>
             </div>
-          </section>
+          )}
+        </section>
+      </div>
 
-          <section className="space-y-4 pt-6 border-t border-slate-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">Assets</h2>
-              <button onClick={handleAddAsset} className="text-indigo-600 hover:text-indigo-800">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="space-y-6 lg:col-span-1 pr-4 lg:border-r border-slate-200">
+
+          <section className="space-y-4">
+            <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setAssetsExpanded(!assetsExpanded)}>
+              <div className="flex items-center space-x-2">
+                {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                <h2 className="text-xl font-semibold text-slate-800">Assets ({params.assets.length})</h2>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
                 <Plus size={20} />
               </button>
             </div>
-            {params.assets.map(asset => (
+            {assetsExpanded && params.assets.map(asset => (
               <div key={asset.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
                 <button onClick={() => handleRemoveAsset(asset.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Trash2 size={16} />
@@ -474,9 +625,62 @@ function App() {
               </div>
             ))}
           </section>
+
+          <section className="space-y-4 pt-6 border-t border-slate-200">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-slate-800">Life Events (Markers)</h2>
+              <button onClick={handleAddLifeEvent} className="text-indigo-600 hover:text-indigo-800">
+                <Plus size={20} />
+              </button>
+            </div>
+            {params.life_events.map(evt => (
+              <div key={evt.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
+                <button onClick={() => handleRemoveLifeEvent(evt.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Trash2 size={16} />
+                </button>
+                <input value={evt.name} onChange={e => handleUpdateLifeEvent(evt.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Event Name" />
+                <div className="grid grid-cols-1 gap-3">
+                  <label className="block text-xs text-slate-500">
+                    Age it occurs
+                    <input type="number" value={evt.age} onChange={e => handleUpdateLifeEvent(evt.id, 'age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="space-y-4 pt-6 border-t border-slate-200">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-slate-800">What-If Scenarios</h2>
+              <button onClick={handleAddWhatIf} disabled={whatIfs.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors">
+                <Plus size={20} />
+              </button>
+            </div>
+            {whatIfs.length === 0 && (
+              <p className="text-sm text-slate-500 italic">Add a scenario to compare against the base plan.</p>
+            )}
+            {whatIfs.map(scenario => (
+              <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
+                <button onClick={() => handleRemoveWhatIf(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Trash2 size={16} />
+                </button>
+                <input value={scenario.name} onChange={e => handleUpdateWhatIf(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-xs text-slate-500">
+                    Inflation Offset (%)
+                    <input type="number" step="0.1" value={scenario.inflationOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'inflationOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                  </label>
+                  <label className="block text-xs text-slate-500">
+                    Asset Growth Offset (%)
+                    <input type="number" step="0.1" value={scenario.growthOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'growthOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </section>
         </div>
 
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-3 space-y-8">
           {!simulationData ? (
             <div className="bg-slate-100 rounded-2xl h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
               <TrendingUp size={48} className="mb-4 text-slate-400" />
@@ -500,6 +704,11 @@ function App() {
                           <Area key={asset.name} type="monotone" dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" stroke={color} fill={color} fillOpacity={0.6} />
                         )
                       })}
+                      {params.life_events.map(evt => (
+                        <ReferenceLine key={evt.id} x={evt.age} stroke="#94a3b8" strokeDasharray="3 3">
+                          <text x={evt.age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                        </ReferenceLine>
+                      ))}
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -532,6 +741,11 @@ function App() {
                       })()}
 
                       <Line type="step" dataKey="required_income" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" name="Required Income" dot={false} />
+                      {params.life_events.map(evt => (
+                        <ReferenceLine key={evt.id} x={evt.age} stroke="#94a3b8" strokeDasharray="3 3">
+                          <text x={evt.age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                        </ReferenceLine>
+                      ))}
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -564,7 +778,56 @@ function App() {
                               <Area key={p.id} type="monotone" dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" stroke={color} fill={color} fillOpacity={0.6} />
                             )
                           })}
+                          {params.life_events.map(evt => (
+                            <ReferenceLine key={evt.id} x={evt.age} stroke="#94a3b8" strokeDasharray="3 3">
+                              <text x={evt.age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                            </ReferenceLine>
+                          ))}
                         </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Combined Scenarios Chart */}
+              {whatIfs.length > 0 && Object.keys(whatIfData).length > 0 && (() => {
+                // Build combined data array
+                const combinedData = simulationData.map((baseYear: any, index: number) => {
+                  const row: any = { age: baseYear.age, Base: baseYear.total_assets }
+                  whatIfs.forEach(scenario => {
+                    const scenarioTimeline = whatIfData[scenario.id]
+                    if (scenarioTimeline && scenarioTimeline[index]) {
+                      row[scenario.name] = scenarioTimeline[index].total_assets
+                    }
+                  })
+                  return row
+                })
+
+                const scenarioColors = ['#10b981', '#f59e0b', '#ec4899'] // Emerald, Amber, Pink
+
+                return (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">Scenario Comparison (Total Assets)</h3>
+                    <p className="text-xs text-slate-500 mb-4">Comparing the baseline projection with your what-if scenarios.</p>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={combinedData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                          <XAxis dataKey="age" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
+                          <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} width={80} />
+                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Legend />
+                          <Line type="monotone" dataKey="Base" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                          {whatIfs.map((scenario, idx) => (
+                            <Line key={scenario.id} type="monotone" dataKey={scenario.name} stroke={scenarioColors[idx % scenarioColors.length]} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                          ))}
+                          {params.life_events.map(evt => (
+                            <ReferenceLine key={evt.id} x={evt.age} stroke="#94a3b8" strokeDasharray="3 3">
+                              <text x={evt.age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                            </ReferenceLine>
+                          ))}
+                        </LineChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
@@ -572,6 +835,74 @@ function App() {
               })()}
             </>
           )}
+
+          {/* Tabular View */}
+          {simulationData && params.people.length > 0 && (() => {
+            // We need to collect all possible income sources across all years for columns
+            const allIncomeKeys = new Set<string>();
+            simulationData.forEach((year: any) => {
+              Object.keys(year.income_breakdown).forEach(k => allIncomeKeys.add(k));
+            });
+            const incomeColumns = Array.from(allIncomeKeys);
+
+            return (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-8">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Annual Breakdown</h3>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full text-sm text-left text-slate-600">
+                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Age</th>
+                        {incomeColumns.map(col => (
+                          <React.Fragment key={col}>
+                            <th className="px-4 py-3 font-semibold text-slate-700 bg-slate-100/50">{col} (Income)</th>
+                            <th className="px-4 py-3 font-semibold text-rose-700/80 bg-rose-50/30">{col} (Tax)</th>
+                          </React.Fragment>
+                        ))}
+                        <th className="px-4 py-3 font-semibold text-indigo-700 bg-indigo-50 border-x border-slate-200">Total Income</th>
+                        {params.people.map(p => (
+                          <th key={p.id} className="px-4 py-3 font-semibold">{p.name} Tax</th>
+                        ))}
+                        <th className="px-4 py-3 font-semibold text-rose-700 bg-rose-50 border-l border-slate-200">Total Tax</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {simulationData.map((year: any) => {
+                        const totalTax = params.people.reduce((sum, p) => sum + (year.tax_breakdown?.[p.name]?.total ?? 0), 0);
+                        return (
+                          <tr key={year.age} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-2 font-medium text-slate-900">{year.age}</td>
+                            {incomeColumns.map(col => (
+                              <React.Fragment key={col}>
+                                <td className="px-4 py-2 font-medium text-slate-700 bg-slate-50/50">
+                                  £{Number(year.income_breakdown[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </td>
+                                <td className="px-4 py-2 text-rose-600/80 bg-rose-50/30">
+                                  £{Number(year.tax_by_source?.[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </td>
+                              </React.Fragment>
+                            ))}
+                            <td className="px-4 py-2 font-semibold text-indigo-700 bg-indigo-50/50 border-x border-slate-200">
+                              £{Number(year.total_income || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </td>
+                            {params.people.map(p => (
+                              <td key={p.id} className="px-4 py-2">
+                                £{Number(year.tax_breakdown?.[p.name]?.total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </td>
+                            ))}
+                            <td className="px-4 py-2 font-semibold text-rose-700 bg-rose-50/50 border-l border-slate-200">
+                              £{Number(totalTax || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })()}
+
         </div>
       </div>
 

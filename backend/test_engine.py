@@ -46,11 +46,11 @@ def test_withdrawals():
     timeline = result["timeline"]
     
     # Year 1 (age 60): 50k balance -> required 20k -> withdrawal 20k -> remaining 30k
-    assert timeline[0]["generated_income"] == 20000
+    assert timeline[0]["total_income"] == 20000
     assert timeline[0]["total_assets"] == 30000
     
     # Year 1 (age 60): 30k balance -> required 20k -> withdrawal 20k -> remaining 10k
-    assert timeline[1]["generated_income"] == 20000
+    assert timeline[1]["total_income"] == 20000
     assert timeline[1]["total_assets"] == 10000
 
 def test_property_and_db_pension():
@@ -75,7 +75,7 @@ def test_property_and_db_pension():
     # Year 1 (age 60): Required 25k. Generated 15k from DB Pension. Shortfall 10k. 
     # Withdrawn from cash: 10k. Cash remaining: 40k. House remaining: 300k * 1.02 = 306k.
     # Total Assets = 346k
-    assert timeline[0]["generated_income"] == 25000 # 15k + 10k
+    assert timeline[0]["total_income"] == 25000 # 15k + 10k
     assert timeline[0]["asset_balances"]["Cash"] == 40000
     assert timeline[0]["asset_balances"]["House"] == 306000
     assert timeline[0]["total_assets"] == 346000
@@ -83,7 +83,7 @@ def test_property_and_db_pension():
     # Year 2 (age 61): Required 25k. Generated 15k from DB. Shortfall 10k.
     # Withdrawn from cash: 10k. Cash remaining: 30k. House remaining: 306k * 1.02 = 312120.
     # Total Assets = 342120
-    assert timeline[1]["generated_income"] == 25000
+    assert timeline[1]["total_income"] == 25000
     assert timeline[1]["asset_balances"]["Cash"] == 30000
     assert timeline[1]["asset_balances"]["House"] == 312120
     assert timeline[1]["total_assets"] == 342120
