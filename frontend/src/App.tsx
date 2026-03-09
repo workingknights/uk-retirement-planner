@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, LineChart } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import React from 'react'
 
 // Basic types
@@ -110,6 +110,10 @@ function App() {
   const [whatIfData, setWhatIfData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(false)
   const [assetsExpanded, setAssetsExpanded] = useState(false)
+  const [incomesExpanded, setIncomesExpanded] = useState(false)
+  const [eventsExpanded, setEventsExpanded] = useState(false)
+  const [whatIfsExpanded, setWhatIfsExpanded] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
 
   const [scenarios, setScenarios] = useState<{ id: string, name: string, last_modified?: number }[]>([])
   const [showLoadModal, setShowLoadModal] = useState(false)
@@ -163,7 +167,9 @@ function App() {
       const res = await fetch(`http://localhost:8000/api/scenarios/${id}`)
       const data = await res.json()
       if (data.success) {
-        setParams(data.data.data)
+        // Robust backward-compatible merge with defaultParams
+        const loadedParams = { ...defaultParams, ...data.data.data }
+        setParams(loadedParams)
         setCurrentScenarioName(data.data.name)
         setShowLoadModal(false)
         setSimulationData(null) // clear previous sim
@@ -359,11 +365,18 @@ function App() {
         </div>
         <div className="flex space-x-3">
           <button
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+            title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shadow-sm transition-all"
+          >
+            {sidebarVisible ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+          </button>
+          <button
             onClick={() => setShowLoadModal(true)}
             className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
           >
             <Download size={18} />
-            <span>Load</span>
+            <span className="hidden sm:inline">Load</span>
           </button>
           <button
             onClick={handleOpenSaveModal}
@@ -466,221 +479,232 @@ function App() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="space-y-6 lg:col-span-1 pr-4 lg:border-r border-slate-200">
+      <div className={`grid grid-cols-1 gap-8 ${sidebarVisible ? 'lg:grid-cols-4' : 'lg:grid-cols-1'}`}>
+        {sidebarVisible && (
+          <div className="space-y-6 lg:col-span-1 pr-4 lg:border-r border-slate-200">
 
-          <section className="space-y-4">
-            <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setAssetsExpanded(!assetsExpanded)}>
-              <div className="flex items-center space-x-2">
-                {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                <h2 className="text-xl font-semibold text-slate-800">Assets ({params.assets.length})</h2>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
-                <Plus size={20} />
-              </button>
-            </div>
-            {assetsExpanded && params.assets.map(asset => (
-              <div key={asset.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
-                <button onClick={() => handleRemoveAsset(asset.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Trash2 size={16} />
-                </button>
-                <input value={asset.name} onChange={e => handleUpdateAsset(asset.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" />
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs text-slate-500">
-                    Type
-                    <select value={asset.type} onChange={e => {
-                      handleUpdateAsset(asset.id, 'type', e.target.value as AssetType);
-                      if (e.target.value === 'property') handleUpdateAsset(asset.id, 'is_withdrawable', false);
-                    }} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
-                      <option value="pension">Pension</option>
-                      <option value="isa">ISA</option>
-                      <option value="premium_bonds">Premium Bonds</option>
-                      <option value="general">GIA</option>
-                      <option value="cash">Cash</option>
-                      <option value="property">Property</option>
-                      <option value="rsu">Company RSUs</option>
-                    </select>
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Balance (£)
-                    <input type="number" value={asset.balance} onChange={e => handleUpdateAsset(asset.id, 'balance', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Growth (%)
-                    <input type="number" step="0.1" value={asset.annual_growth_rate} onChange={e => handleUpdateAsset(asset.id, 'annual_growth_rate', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Contrib. (£/yr)
-                    <input type="number" value={asset.annual_contribution} onChange={e => handleUpdateAsset(asset.id, 'annual_contribution', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="flex items-center space-x-2 text-xs text-slate-500 col-span-2 mt-2">
-                    <input type="checkbox" checked={asset.is_withdrawable} onChange={e => handleUpdateAsset(asset.id, 'is_withdrawable', e.target.checked)} className="rounded border-slate-300" />
-                    <span>Use to fund retirement income</span>
-                  </label>
-                  {asset.is_withdrawable && (
-                    <label className="block text-xs text-slate-500 col-span-2">
-                      Max Annual Withdrawal (£, optional CGT cap)
-                      <input
-                        type="number"
-                        placeholder="No limit"
-                        value={asset.max_annual_withdrawal ?? ''}
-                        onChange={e => handleUpdateAsset(asset.id, 'max_annual_withdrawal', e.target.value === '' ? null : Number(e.target.value))}
-                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
-                      />
-                    </label>
-                  )}
-                  {asset.type === 'general' && (
-                    <label className="block text-xs text-slate-500 col-span-2">
-                      Dividend Yield (% of balance, taxable annually)
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 3.5"
-                        value={asset.dividend_yield ?? ''}
-                        onChange={e => handleUpdateAsset(asset.id, 'dividend_yield', e.target.value === '' ? null : Number(e.target.value))}
-                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
-                      />
-                    </label>
-                  )}
-                  {params.people.length > 0 && (
-                    <div className="col-span-2 mt-1 space-y-1">
-                      <p className="text-xs font-medium text-slate-500">Ownership</p>
-                      {params.people.map(person => {
-                        const own = asset.owners.find(o => o.person_id === person.id)
-                        return (
-                          <div key={person.id} className="flex items-center space-x-2">
-                            <span className="text-xs text-slate-600 w-24 truncate">{person.name}</span>
-                            <input
-                              type="number" min="0" max="100" step="1"
-                              placeholder="0"
-                              value={own ? Math.round(own.share * 100) : ''}
-                              onChange={e => {
-                                const pct = e.target.value === '' ? 0 : Number(e.target.value) / 100
-                                const updated = asset.owners.filter(o => o.person_id !== person.id)
-                                if (pct > 0) updated.push({ person_id: person.id, share: pct })
-                                handleUpdateAsset(asset.id, 'owners', updated)
-                              }}
-                              className="w-16 rounded border-slate-300 p-1 border text-sm"
-                            />
-                            <span className="text-xs text-slate-400">%</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+            <section className="space-y-4">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setAssetsExpanded(!assetsExpanded)}>
+                <div className="flex items-center space-x-2">
+                  {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">Assets ({params.assets.length})</h2>
                 </div>
-              </div>
-            ))}
-          </section>
-
-          <section className="space-y-4 pt-6 border-t border-slate-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">Income Sources</h2>
-              <button onClick={handleAddIncome} className="text-indigo-600 hover:text-indigo-800">
-                <Plus size={20} />
-              </button>
-            </div>
-            {params.incomes.map(income => (
-              <div key={income.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
-                <button onClick={() => handleRemoveIncome(income.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Trash2 size={16} />
+                <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
+                  <Plus size={20} />
                 </button>
-                <input value={income.name} onChange={e => handleUpdateIncome(income.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" />
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs text-slate-500">
-                    Type
-                    <select value={income.type} onChange={e => handleUpdateIncome(income.id, 'type', e.target.value as IncomeSourceType)} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
-                      <option value="state_pension">State Pension</option>
-                      <option value="db_pension">DB Pension</option>
-                      <option value="employment">Employment</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Amount (£/yr)
-                    <input type="number" value={income.amount} onChange={e => handleUpdateIncome(income.id, 'amount', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Start Age
-                    <input type="number" value={income.start_age} onChange={e => handleUpdateIncome(income.id, 'start_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    End Age
-                    <input type="number" value={income.end_age} onChange={e => handleUpdateIncome(income.id, 'end_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  {params.people.length > 0 && (
-                    <label className="block text-xs text-slate-500 col-span-2">
-                      Owner
-                      <select
-                        value={income.person_id ?? ''}
-                        onChange={e => handleUpdateIncome(income.id, 'person_id', e.target.value || null)}
-                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
-                      >
-                        <option value="">Unassigned</option>
-                        {params.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </div>
+              {assetsExpanded && params.assets.map(asset => (
+                <div key={asset.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
+                  <button onClick={() => handleRemoveAsset(asset.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={asset.name} onChange={e => handleUpdateAsset(asset.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Type
+                      <select value={asset.type} onChange={e => {
+                        handleUpdateAsset(asset.id, 'type', e.target.value as AssetType);
+                        if (e.target.value === 'property') handleUpdateAsset(asset.id, 'is_withdrawable', false);
+                      }} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
+                        <option value="pension">Pension</option>
+                        <option value="isa">ISA</option>
+                        <option value="premium_bonds">Premium Bonds</option>
+                        <option value="general">GIA</option>
+                        <option value="cash">Cash</option>
+                        <option value="property">Property</option>
+                        <option value="rsu">Company RSUs</option>
                       </select>
                     </label>
-                  )}
+                    <label className="block text-xs text-slate-500">
+                      Balance (£)
+                      <input type="number" value={asset.balance} onChange={e => handleUpdateAsset(asset.id, 'balance', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Growth (%)
+                      <input type="number" step="0.1" value={asset.annual_growth_rate} onChange={e => handleUpdateAsset(asset.id, 'annual_growth_rate', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Contrib. (£/yr)
+                      <input type="number" value={asset.annual_contribution} onChange={e => handleUpdateAsset(asset.id, 'annual_contribution', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-slate-500 col-span-2 mt-2">
+                      <input type="checkbox" checked={asset.is_withdrawable} onChange={e => handleUpdateAsset(asset.id, 'is_withdrawable', e.target.checked)} className="rounded border-slate-300" />
+                      <span>Use to fund retirement income</span>
+                    </label>
+                    {asset.is_withdrawable && (
+                      <label className="block text-xs text-slate-500 col-span-2">
+                        Max Annual Withdrawal (£, optional CGT cap)
+                        <input
+                          type="number"
+                          placeholder="No limit"
+                          value={asset.max_annual_withdrawal ?? ''}
+                          onChange={e => handleUpdateAsset(asset.id, 'max_annual_withdrawal', e.target.value === '' ? null : Number(e.target.value))}
+                          className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                        />
+                      </label>
+                    )}
+                    {asset.type === 'general' && (
+                      <label className="block text-xs text-slate-500 col-span-2">
+                        Dividend Yield (% of balance, taxable annually)
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g. 3.5"
+                          value={asset.dividend_yield ?? ''}
+                          onChange={e => handleUpdateAsset(asset.id, 'dividend_yield', e.target.value === '' ? null : Number(e.target.value))}
+                          className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                        />
+                      </label>
+                    )}
+                    {params.people.length > 0 && (
+                      <div className="col-span-2 mt-1 space-y-1">
+                        <p className="text-xs font-medium text-slate-500">Ownership</p>
+                        {params.people.map(person => {
+                          const own = asset.owners.find(o => o.person_id === person.id)
+                          return (
+                            <div key={person.id} className="flex items-center space-x-2">
+                              <span className="text-xs text-slate-600 w-24 truncate">{person.name}</span>
+                              <input
+                                type="number" min="0" max="100" step="1"
+                                placeholder="0"
+                                value={own ? Math.round(own.share * 100) : ''}
+                                onChange={e => {
+                                  const pct = e.target.value === '' ? 0 : Number(e.target.value) / 100
+                                  const updated = asset.owners.filter(o => o.person_id !== person.id)
+                                  if (pct > 0) updated.push({ person_id: person.id, share: pct })
+                                  handleUpdateAsset(asset.id, 'owners', updated)
+                                }}
+                                className="w-16 rounded border-slate-300 p-1 border text-sm"
+                              />
+                              <span className="text-xs text-slate-400">%</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </section>
+              ))}
+            </section>
 
-          <section className="space-y-4 pt-6 border-t border-slate-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">Life Events (Markers)</h2>
-              <button onClick={handleAddLifeEvent} className="text-indigo-600 hover:text-indigo-800">
-                <Plus size={20} />
-              </button>
-            </div>
-            {params.life_events.map(evt => (
-              <div key={evt.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
-                <button onClick={() => handleRemoveLifeEvent(evt.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Trash2 size={16} />
+            <section className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setIncomesExpanded(!incomesExpanded)}>
+                <div className="flex items-center space-x-2">
+                  {incomesExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">Income Sources ({params.incomes.length})</h2>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleAddIncome(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
+                  <Plus size={20} />
                 </button>
-                <input value={evt.name} onChange={e => handleUpdateLifeEvent(evt.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Event Name" />
-                <div className="grid grid-cols-1 gap-3">
-                  <label className="block text-xs text-slate-500">
-                    Age it occurs
-                    <input type="number" value={evt.age} onChange={e => handleUpdateLifeEvent(evt.id, 'age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                </div>
               </div>
-            ))}
-          </section>
+              {incomesExpanded && params.incomes.map(income => (
+                <div key={income.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
+                  <button onClick={() => handleRemoveIncome(income.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={income.name} onChange={e => handleUpdateIncome(income.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Type
+                      <select value={income.type} onChange={e => handleUpdateIncome(income.id, 'type', e.target.value as IncomeSourceType)} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm">
+                        <option value="state_pension">State Pension</option>
+                        <option value="db_pension">DB Pension</option>
+                        <option value="employment">Employment</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Amount (£/yr)
+                      <input type="number" value={income.amount} onChange={e => handleUpdateIncome(income.id, 'amount', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Start Age
+                      <input type="number" value={income.start_age} onChange={e => handleUpdateIncome(income.id, 'start_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      End Age
+                      <input type="number" value={income.end_age} onChange={e => handleUpdateIncome(income.id, 'end_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    {params.people.length > 0 && (
+                      <label className="block text-xs text-slate-500 col-span-2">
+                        Owner
+                        <select
+                          value={income.person_id ?? ''}
+                          onChange={e => handleUpdateIncome(income.id, 'person_id', e.target.value || null)}
+                          className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                        >
+                          <option value="">Unassigned</option>
+                          {params.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </section>
 
-          <section className="space-y-4 pt-6 border-t border-slate-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">What-If Scenarios</h2>
-              <button onClick={handleAddWhatIf} disabled={whatIfs.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors">
-                <Plus size={20} />
-              </button>
-            </div>
-            {whatIfs.length === 0 && (
-              <p className="text-sm text-slate-500 italic">Add a scenario to compare against the base plan.</p>
-            )}
-            {whatIfs.map(scenario => (
-              <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
-                <button onClick={() => handleRemoveWhatIf(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Trash2 size={16} />
+            <section className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setEventsExpanded(!eventsExpanded)}>
+                <div className="flex items-center space-x-2">
+                  {eventsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">Life Events ({params.life_events.length})</h2>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleAddLifeEvent(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
+                  <Plus size={20} />
                 </button>
-                <input value={scenario.name} onChange={e => handleUpdateWhatIf(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs text-slate-500">
-                    Inflation Offset (%)
-                    <input type="number" step="0.1" value={scenario.inflationOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'inflationOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                  <label className="block text-xs text-slate-500">
-                    Asset Growth Offset (%)
-                    <input type="number" step="0.1" value={scenario.growthOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'growthOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                  </label>
-                </div>
               </div>
-            ))}
-          </section>
-        </div>
+              {eventsExpanded && params.life_events.map(evt => (
+                <div key={evt.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
+                  <button onClick={() => handleRemoveLifeEvent(evt.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={evt.name} onChange={e => handleUpdateLifeEvent(evt.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Event Name" />
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Age it occurs
+                      <input type="number" value={evt.age} onChange={e => handleUpdateLifeEvent(evt.id, 'age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </section>
 
-        <div className="lg:col-span-3 space-y-8">
+            <section className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setWhatIfsExpanded(!whatIfsExpanded)}>
+                <div className="flex items-center space-x-2">
+                  {whatIfsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">What-If Scenarios ({whatIfs.length})</h2>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleAddWhatIf(); }} disabled={whatIfs.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors p-1">
+                  <Plus size={20} />
+                </button>
+              </div>
+              {whatIfsExpanded && whatIfs.length === 0 && (
+                <p className="text-sm text-slate-500 italic px-2">Add a scenario to compare against the base plan.</p>
+              )}
+              {whatIfsExpanded && whatIfs.map(scenario => (
+                <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
+                  <button onClick={() => handleRemoveWhatIf(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={scenario.name} onChange={e => handleUpdateWhatIf(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Inflation Offset (%)
+                      <input type="number" step="0.1" value={scenario.inflationOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'inflationOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Asset Growth Offset (%)
+                      <input type="number" step="0.1" value={scenario.growthOffset} onChange={e => handleUpdateWhatIf(scenario.id, 'growthOffset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+
+        <div className={`${sidebarVisible ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-8`}>
           {!simulationData ? (
             <div className="bg-slate-100 rounded-2xl h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
               <TrendingUp size={48} className="mb-4 text-slate-400" />

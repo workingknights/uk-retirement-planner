@@ -140,11 +140,9 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
 
     for age in range(current_age, life_expectancy + 1):
 
-        # 1. Required (inflation-adjusted) income in retirement
-        required_income = 0.0
-        if age >= retirement_age:
-            years_inflated = age - current_age
-            required_income = params.desired_annual_income * ((1 + inflation_rate) ** years_inflated)
+        # 1. Required (inflation-adjusted) income
+        years_inflated = age - current_age
+        required_income = params.desired_annual_income * ((1 + inflation_rate) ** years_inflated)
 
         # 2. Scheduled income sources
         generated_income = 0.0
@@ -210,9 +208,55 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         # 4. Withdraw from assets to cover income shortfall
         shortfall = max(0.0, required_income - generated_income)
 
-        if shortfall > 0 and age >= retirement_age:
-            use_blended = (params.withdrawal_strategy == "blended")
-            bp = params.blended_params or BlendedStrategyParams()
+        if shortfall > 0:
+            if age < retirement_age:
+                # ── Pre-Retirement Strategy ──
+                # Only use cash, premium_bonds, rsu, general (no ISA or Pension)
+                allowed_types = {"cash", "premium_bonds", "rsu", "general"}
+                withdrawable_assets = [a for a in assets if a.is_withdrawable and a.type in allowed_types]
+                priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
+                remaining_shortfall = shortfall
+                for asset in sorted_assets:
+                    if remaining_shortfall <= 0:
+                        break
+                    if asset.balance > 0:
+                        max_draw = (
+                            asset.max_annual_withdrawal
+                            if asset.max_annual_withdrawal is not None
+                            else float("inf")
+                        )
+                        withdrawal = min(asset.balance, remaining_shortfall, max_draw)
+                        asset.balance -= withdrawal
+                        remaining_shortfall -= withdrawal
+                        generated_income += withdrawal
+                        src_name = f"Withdrawal: {asset.name}"
+                        income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
+                        
+                        if not asset.owners:
+                            if people:
+                                pid = next(iter(people))
+                                _attribute_withdrawal_tax_with_sources(
+                                    pid, withdrawal, asset, src_name,
+                                    person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                    person_tax_free_remaining,
+                                    person_source_taxable, person_source_cgt, person_source_property_cgt
+                                )
+                        else:
+                            for ownership in asset.owners:
+                                pid = ownership.person_id
+                                if pid not in people:
+                                    continue
+                                share_amount = withdrawal * ownership.share
+                                _attribute_withdrawal_tax_with_sources(
+                                    pid, share_amount, asset, src_name,
+                                    person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                    person_tax_free_remaining,
+                                    person_source_taxable, person_source_cgt, person_source_property_cgt
+                                )
+            else:
+                use_blended = (params.withdrawal_strategy == "blended")
+                bp = params.blended_params or BlendedStrategyParams()
 
             if use_blended:
                 # ── Blended Tax-Optimised Strategy ──
@@ -243,17 +287,18 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                 pension_assets = [a for a in assets if a.type == "pension" and a.is_withdrawable and a.balance > 0]
                 isa_topup_remaining = bp.isa_topup_from_pension  # £20k default
                 for asset in pension_assets:
+                    if shortfall <= 0 and isa_topup_remaining <= 0:
+                        break
                     draw_target = asset.balance * (bp.pension_drawdown_pct / 100.0)
-                    # Draw at least enough for shortfall, but also draw for ISA recycling
-                    # The pension drawdown is the LARGER of: shortfall remaining OR target %
-                    pension_draw = max(draw_target, shortfall) if shortfall > 0 else draw_target
+                    # Maximum useful draw is what's needed for the shortfall PLUS what we can recycle into ISA
+                    max_useful_draw = shortfall + isa_topup_remaining
+                    pension_draw = min(draw_target, max_useful_draw)
+                    
                     withdrawal = min(asset.balance, pension_draw)
                     if withdrawal <= 0:
                         continue
+                    
                     asset.balance -= withdrawal
-                    # Only part of this covers the income shortfall
-                    covers_shortfall = min(withdrawal, shortfall)
-                    shortfall -= covers_shortfall
                     generated_income += withdrawal
                     src_name = f"Withdrawal: {asset.name}"
                     income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
@@ -282,12 +327,18 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             )
 
                     # Step C: Recycle part of the pension drawdown into ISA (up to £20k/yr)
+                    topup = 0.0
                     if isa_topup_remaining > 0 and isa_assets:
                         topup = min(withdrawal, isa_topup_remaining)
                         # Top up the first ISA found
                         isa_assets[0].balance += topup
                         isa_topup_remaining -= topup
                         income_breakdown[f"ISA Top-up (from {asset.name})"] = income_breakdown.get(f"ISA Top-up (from {asset.name})", 0.0) + topup
+
+                    # The remaining withdrawal goes towards satisfying the lifestyle shortfall
+                    covers_shortfall = withdrawal - topup
+                    if covers_shortfall > 0:
+                        shortfall -= covers_shortfall
 
                 # Step D: If still shortfall, fall back to sequential priority for remaining gap
                 if shortfall > 0:
