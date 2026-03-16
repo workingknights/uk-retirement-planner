@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, LineChart } from 'recharts'
 import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import React from 'react'
+import { API_BASE_URL } from './config'
 
 // Basic types
 type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu' | 'premium_bonds'
@@ -123,7 +124,7 @@ function App() {
 
   const fetchScenarios = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/scenarios')
+      const res = await fetch(`${API_BASE_URL}/api/scenarios`)
       const data = await res.json()
       if (data.success) setScenarios(data.data)
     } catch (e) { console.error('Failed to fetch scenarios', e) }
@@ -145,7 +146,7 @@ function App() {
     }
 
     try {
-      await fetch('http://localhost:8000/api/scenarios', {
+      await fetch(`${API_BASE_URL}/api/scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: saveName.trim(), data: params })
@@ -164,7 +165,7 @@ function App() {
 
   const handleLoadScenario = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/scenarios/${id}`)
+      const res = await fetch(`${API_BASE_URL}/api/scenarios/${id}`)
       const data = await res.json()
       if (data.success) {
         // Robust backward-compatible merge with defaultParams
@@ -179,7 +180,7 @@ function App() {
 
   const handleDeleteScenario = async (id: string) => {
     try {
-      await fetch(`http://localhost:8000/api/scenarios/${id}`, { method: 'DELETE' })
+      await fetch(`${API_BASE_URL}/api/scenarios/${id}`, { method: 'DELETE' })
       fetchScenarios()
     } catch (e) { console.error('Failed to delete scenario', e) }
   }
@@ -188,7 +189,7 @@ function App() {
     setLoading(true)
     try {
       // 1. Fetch base scenario
-      const baseResponse = await fetch('http://localhost:8000/api/simulate', {
+      const baseResponse = await fetch(`${API_BASE_URL}/api/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
@@ -211,7 +212,7 @@ function App() {
             }))
           }
 
-          const response = await fetch('http://localhost:8000/api/simulate', {
+          const response = await fetch(`${API_BASE_URL}/api/simulate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(scenarioParams)
