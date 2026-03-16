@@ -124,11 +124,10 @@ async def delete_scenario(scenario_id: str, request: Request):
         if os.path.exists(filepath):
             os.remove(filepath)
             return {"success": True}
-# Cloudflare Worker Entrypoint
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         # Bridging Cloudflare Request -> FastAPI
-        # request.state.env is set automatically by the asgi bridge
-        return await asgi.fetch(app, request, env)
+        # request.js_object is the raw JS request required by asgi.fetch
+        return await asgi.fetch(app, request.js_object, env)
 
 print("--- BACKEND STARTUP SEQUENCE COMPLETE ---")

@@ -2,7 +2,9 @@
 name = "uk-retirement-planner"
 version = "0.1.0"
 description = "UK Retirement Planner API"
+requires-python = ">=3.12"
 dependencies = [
+    "webtypy>=0.1.7",
     "fastapi",
     "pydantic"
 ]
