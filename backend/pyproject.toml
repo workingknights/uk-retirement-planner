@@ -1,0 +1,11 @@
+[project]
+name = "uk-retirement-planner"
+version = "0.1.0"
+description = "UK Retirement Planner API"
+dependencies = [
+    "fastapi",
+    "pydantic"
+]
+
+[tool.pywrangler]
+main = "main.py"

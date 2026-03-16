@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 import json
@@ -146,22 +145,5 @@ async def delete_scenario(scenario_id: str, request: Request):
             os.remove(filepath)
             return {"success": True}
         raise HTTPException(status_code=404, detail="Scenario not found")
-
-# Serve frontend static files
-# Search for 'dist' folder in current directory or parent
-base_dir = os.path.dirname(__file__)
-frontend_dist = os.path.join(base_dir, "dist")
-
-print(f"Mounting static files from: {frontend_dist}")
-if os.path.exists(frontend_dist):
-    try:
-        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
-        print("Static files mounted successfully")
-    except Exception as e:
-        import traceback
-        print(f"ERROR mounting static files: {e}")
-        traceback.print_exc()
-else:
-    print(f"CRITICAL: Static directory not found at {frontend_dist}")
 
 print("--- BACKEND STARTUP SEQUENCE COMPLETE ---")
