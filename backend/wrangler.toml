@@ -1,18 +1,12 @@
-#:schema node_modules/wrangler/config-schema.json
-name = "uk-retirement-planner-api"
+name = "uk-retirement-planner"
 main = "main.py"
 compatibility_date = "2024-03-12"
 compatibility_flags = ["python_workers"]
 
 # Bind a KV Namespace. This allows your Worker to store data in a key-value store.
-# You will need to create this namespace in the Cloudflare Dashboard and replace the ID.
 [[kv_namespaces]]
 binding = "SCENARIOS_KV"
 id = "3425d31abf8940c8b9d7b9193634960d"
 
 [vars]
 ALLOWED_ORIGINS = "*"
-
-[python_worker]
-# Cloudflare Python Workers support standard FastAPI apps
-# Requirements will be read from requirements.txt
