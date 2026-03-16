@@ -40,7 +40,8 @@ jobs:
       - name: Deploy Backend to Workers
         working-directory: backend
         run: |
-          $HOME/.local/bin/uv run --with cloudflare-pywrangler pywrangler deploy
+          # Use workers-py which provides the pywrangler CLI
+          $HOME/.local/bin/uv run --with workers-py pywrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
