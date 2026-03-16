@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
+from cloudflare import WorkerEntrypoint
+import asgi
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -15,29 +17,7 @@ app = FastAPI(title="UK Retirement Planner API")
 # Configure CORS for frontend access
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:5174,http://127.0.0.1:5174").split(",")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.middleware("http")
-async def log_requests(request, call_next):
-    import time
-    start_time = time.time()
-    print(f"Incoming request: {request.method} {request.url}")
-    try:
-        response = await call_next(request)
-        process_time = time.time() - start_time
-        print(f"Request finished: {request.method} {request.url} - Status: {response.status_code} - Time: {process_time:.2f}s")
-        return response
-    except Exception as e:
-        print(f"ERROR processing request: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+# Standard FastAPI endpoints below...
 
 @app.get("/health")
 def health_check():
@@ -144,6 +124,11 @@ async def delete_scenario(scenario_id: str, request: Request):
         if os.path.exists(filepath):
             os.remove(filepath)
             return {"success": True}
-        raise HTTPException(status_code=404, detail="Scenario not found")
+# Cloudflare Worker Entrypoint
+class Default(WorkerEntrypoint):
+    async def fetch(self, request, env, ctx):
+        # Bridging Cloudflare Request -> FastAPI
+        # request.state.env is set automatically by the asgi bridge
+        return await asgi.fetch(app, request, env)
 
 print("--- BACKEND STARTUP SEQUENCE COMPLETE ---")
