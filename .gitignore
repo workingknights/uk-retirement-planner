@@ -53,3 +53,5 @@ yarn-error.log*
 src/scenarios/*.json
 !src/scenarios/.gitkeep
 build_logs.txt
+tail_logs.txt
+.wrangler/
