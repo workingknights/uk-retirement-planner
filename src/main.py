@@ -1,12 +1,13 @@
+from workers import WorkerEntrypoint
 import json
 import traceback
 import os
 import sys
 
 IMPORT_ERROR = None
+app = None
 try:
     from fastapi import FastAPI, HTTPException, Request
-    from workers import WorkerEntrypoint
     import asgi
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
