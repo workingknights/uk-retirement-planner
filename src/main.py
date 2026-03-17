@@ -122,27 +122,16 @@ async def delete_scenario(scenario_id: str, request: Request):
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
-            from js import Response, Object
+            # Set env on request state so FastAPI can access it (if needed elsewhere)
+            # but asgi.fetch uses the raw request and env directly usually
             
-            # Check if it's the health endpoint manually for debugging
-            url = str(request.url)
-            if "/health" in url:
-                props = {
-                    "type": str(type(request)),
-                    "has_js_object": hasattr(request, "js_object"),
-                    "dir": dir(request)
-                }
-                headers = Object.fromEntries([["Content-Length", str(len(json.dumps(props)) + 100)], ["Content-Type", "application/json"]])
-                return Response.new(json.dumps(props), Object.fromEntries([["status", 200], ["headers", headers]]))
-            
-            # Attempt to use asgi.fetch with the suspected correct object
-            # If it has js_object, use it, otherwise use request itself
+            # Use the raw JS request object if available (it usually is in this runtime)
             req_to_use = getattr(request, "js_object", request)
             return await asgi.fetch(app, req_to_use, env)
-            
         except Exception as e:
             import traceback
             error_msg = f"Worker Error: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
             from js import Response, Object
             headers = Object.fromEntries([["Content-Type", "text/plain"]])
             return Response.new(error_msg, Object.fromEntries([["status", 500], ["headers", headers]]))
