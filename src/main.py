@@ -4,26 +4,38 @@ import os
 import json
 import traceback
 
-# Cache the app at the module level
+# Cache at module level
 _cached_app = None
 _startup_error = None
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         global _cached_app, _startup_error
-        from js import Response, Object
+        
+        # 1. Extremely safe JS utilities
+        try:
+            from js import Response, Object
+            def safe_response(body, status=200, content_type="text/plain"):
+                try:
+                    headers = Object.fromEntries([["Content-Type", content_type]])
+                    return Response.new(body, Object.fromEntries([["status", status], ["headers", headers]]))
+                except:
+                    return str(body)
+        except Exception as e:
+            return f"CRITICAL: Failed to import 'js': {str(e)}"
 
+        # 2. Handle cached errors
         if _startup_error:
-            headers = Object.fromEntries([["Content-Type", "text/plain"]])
-            return Response.new(f"CACHED STARTUP ERROR:\n{_startup_error}", Object.fromEntries([["status", 500], ["headers", headers]]))
+            return safe_response(f"CACHED INITIALIZATION ERROR:\n{_startup_error}", 500)
 
+        # 3. Lazy Initialization
         if _cached_app is None:
             try:
-                # Imports inside fetch to catch startup issues
+                # print("--- INITIALIZING FASTAPI ---")
                 from fastapi import FastAPI, HTTPException, Request
-                import asgi
                 from fastapi.middleware.cors import CORSMiddleware
                 from pydantic import BaseModel
+                import asgi
                 import uuid
                 import time
 
@@ -32,8 +44,13 @@ class Default(WorkerEntrypoint):
 
                 app = FastAPI(title="UK Retirement Planner API")
                 
-                # Use env for origins
-                allowed_origins = str(getattr(env, "ALLOWED_ORIGINS", "*")).split(",")
+                # Env config
+                try:
+                    origins_raw = getattr(env, "ALLOWED_ORIGINS", "*")
+                    allowed_origins = str(origins_raw).split(",")
+                except:
+                    allowed_origins = ["*"]
+
                 app.add_middleware(
                     CORSMiddleware,
                     allow_origins=allowed_origins,
@@ -42,14 +59,18 @@ class Default(WorkerEntrypoint):
                     allow_headers=["*"],
                 )
 
+                # --- ROUTES ---
                 @app.get("/health")
                 def health_check():
-                    return {"status": "ok", "message": "Backend is alive"}
+                    return {"status": "ok", "message": "Backend is alive", "python": sys.version}
 
                 @app.post("/api/simulate")
                 def simulate(params: SimulationParams):
-                    result = run_simulation(params)
-                    return {"success": True, "data": result}
+                    try:
+                        result = run_simulation(params)
+                        return {"success": True, "data": result}
+                    except Exception as e:
+                        raise HTTPException(status_code=500, detail=str(e))
 
                 class ScenarioSaveRequest(BaseModel):
                     name: str
@@ -61,18 +82,21 @@ class Default(WorkerEntrypoint):
                     if not kv:
                         return {"success": True, "data": [], "message": "KV not configured"}
                     
-                    keys = await kv.list()
-                    scenarios = []
-                    for key in keys.keys:
-                        val = await kv.get(key.name)
-                        if val:
-                            content = json.loads(val)
-                            scenarios.append({
-                                "id": content.get("id"),
-                                "name": content.get("name"),
-                                "last_modified": content.get("last_modified", 0)
-                            })
-                    return {"success": True, "data": scenarios}
+                    try:
+                        keys = await kv.list()
+                        scenarios = []
+                        for key in keys.keys:
+                            val = await kv.get(key.name)
+                            if val:
+                                content = json.loads(val)
+                                scenarios.append({
+                                    "id": content.get("id"),
+                                    "name": content.get("name"),
+                                    "last_modified": content.get("last_modified", 0)
+                                })
+                        return {"success": True, "data": scenarios}
+                    except Exception as e:
+                        return {"success": False, "error": str(e)}
 
                 @app.post("/api/scenarios")
                 async def save_scenario(req: ScenarioSaveRequest, request: Request):
@@ -110,20 +134,19 @@ class Default(WorkerEntrypoint):
                     return {"success": True}
 
                 _cached_app = app
-                print("--- FASTAPI APP INITIALIZED ---")
+                # print("--- FASTAPI APP READY ---")
             except Exception as e:
-                _startup_error = f"Startup Error: {str(e)}\n{traceback.format_exc()}"
-                headers = Object.fromEntries([["Content-Type", "text/plain"]])
-                return Response.new(f"INITIALIZATION ERROR:\n{_startup_error}", Object.fromEntries([["status", 500], ["headers", headers]]))
+                _startup_error = f"{str(e)}\n{traceback.format_exc()}"
+                return safe_response(f"INITIALIZATION ERROR:\n{_startup_error}", 500)
 
+        # 4. Handle Request
         try:
             import asgi
             # Use raw request if available
             req_to_use = getattr(request, "js_object", request)
             return await asgi.fetch(_cached_app, req_to_use, env)
         except Exception as e:
-            error_msg = f"Runtime Error: {str(e)}\n{traceback.format_exc()}"
-            headers = Object.fromEntries([["Content-Type", "text/plain"]])
-            return Response.new(error_msg, Object.fromEntries([["status", 500], ["headers", headers]]))
+            error_msg = f"RUNTIME ERROR:\n{str(e)}\n{traceback.format_exc()}"
+            return safe_response(error_msg, 500)
 
-print("--- LAZY WORKER ENTRYPOINT READY ---")
+print("--- WORKER MODULE LOADED ---")
