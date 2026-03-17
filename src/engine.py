@@ -134,7 +134,7 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         pid: PENSION_TAX_FREE_LIFETIME_LIMIT for pid in people
     }
 
-    assets = [Asset(**a.model_dump()) for a in params.assets]
+    assets = [Asset(**a.dict()) for a in params.assets]
 
     yearly_data = []
 
@@ -495,7 +495,7 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         yearly_data.append(year_record)
 
     return {
-        "params": params.model_dump(),
+        "params": params.dict(),
         "timeline": yearly_data,
     }
 

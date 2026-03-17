@@ -20,7 +20,7 @@ jobs:
           node-version: 20
 
       - name: Build Frontend
-        working-directory: frontend
+        working-directory: assets
         run: |
           npm install
           npm run build
@@ -32,13 +32,13 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/dist --project-name=uk-retirement-planner
+          command: pages deploy assets/dist --project-name=uk-retirement-planner
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
         
       - name: Deploy Backend to Workers
-        working-directory: backend
+        working-directory: src
         run: |
           # Use workers-py which provides the pywrangler CLI
           $HOME/.local/bin/uv run --with workers-py pywrangler deploy

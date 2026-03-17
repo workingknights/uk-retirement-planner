@@ -81,7 +81,7 @@ async def save_scenario(req: ScenarioSaveRequest, request: Request):
     scenario_doc = {
         "id": scenario_id,
         "name": req.name,
-        "data": req.data.model_dump(),
+        "data": req.data.dict(),
         "last_modified": time.time()
     }
     
