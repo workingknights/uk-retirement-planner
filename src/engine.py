@@ -258,155 +258,52 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                 use_blended = (params.withdrawal_strategy == "blended")
                 bp = params.blended_params or BlendedStrategyParams()
 
-            if use_blended:
-                # ── Blended Tax-Optimised Strategy ──
-                # Step A: Draw isa_drawdown_pct% from each ISA (tax-free)
-                isa_assets = [a for a in assets if a.type == "isa" and a.is_withdrawable and a.balance > 0]
-                for asset in isa_assets:
-                    if shortfall <= 0:
-                        break
-                    draw_target = asset.balance * (bp.isa_drawdown_pct / 100.0)
-                    withdrawal = min(asset.balance, draw_target, shortfall)
-                    if withdrawal > 0:
-                        asset.balance -= withdrawal
-                        shortfall -= withdrawal
-                        generated_income += withdrawal
-                        src_name = f"Withdrawal: {asset.name}"
-                        income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
-                        # ISA is tax-free — no tax attribution needed, but track ownership
-                        if not asset.owners:
-                            pass  # tax-free, no attribution
-                        else:
-                            for ownership in asset.owners:
-                                pid = ownership.person_id
-                                if pid not in people:
-                                    continue
-                                # ISA withdrawals are tax-free, no _attribute call
-
-                # Step B: Draw pension_drawdown_pct% from each DC pension (taxable)
-                pension_assets = [a for a in assets if a.type == "pension" and a.is_withdrawable and a.balance > 0]
-                isa_topup_remaining = bp.isa_topup_from_pension  # £20k default
-                for asset in pension_assets:
-                    if shortfall <= 0 and isa_topup_remaining <= 0:
-                        break
-                    draw_target = asset.balance * (bp.pension_drawdown_pct / 100.0)
-                    # Maximum useful draw is what's needed for the shortfall PLUS what we can recycle into ISA
-                    max_useful_draw = shortfall + isa_topup_remaining
-                    pension_draw = min(draw_target, max_useful_draw)
-                    
-                    withdrawal = min(asset.balance, pension_draw)
-                    if withdrawal <= 0:
-                        continue
-                    
-                    asset.balance -= withdrawal
-                    generated_income += withdrawal
-                    src_name = f"Withdrawal: {asset.name}"
-                    income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
-
-                    # Tax attribution for pension withdrawal
-                    if not asset.owners:
-                        if people:
-                            pid = next(iter(people))
-                            _attribute_withdrawal_tax_with_sources(
-                                pid, withdrawal, asset, src_name,
-                                person_taxable_income, person_cgt_gains, person_cgt_property_gains,
-                                person_tax_free_remaining,
-                                person_source_taxable, person_source_cgt, person_source_property_cgt
-                            )
-                    else:
-                        for ownership in asset.owners:
-                            pid = ownership.person_id
-                            if pid not in people:
-                                continue
-                            share_amount = withdrawal * ownership.share
-                            _attribute_withdrawal_tax_with_sources(
-                                pid, share_amount, asset, src_name,
-                                person_taxable_income, person_cgt_gains, person_cgt_property_gains,
-                                person_tax_free_remaining,
-                                person_source_taxable, person_source_cgt, person_source_property_cgt
-                            )
-
-                    # Step C: Recycle part of the pension drawdown into ISA (up to £20k/yr)
-                    topup = 0.0
-                    if isa_topup_remaining > 0 and isa_assets:
-                        topup = min(withdrawal, isa_topup_remaining)
-                        # Top up the first ISA found
-                        isa_assets[0].balance += topup
-                        isa_topup_remaining -= topup
-                        income_breakdown[f"ISA Top-up (from {asset.name})"] = income_breakdown.get(f"ISA Top-up (from {asset.name})", 0.0) + topup
-
-                    # The remaining withdrawal goes towards satisfying the lifestyle shortfall
-                    covers_shortfall = withdrawal - topup
-                    if covers_shortfall > 0:
-                        shortfall -= covers_shortfall
-
-                # Step D: If still shortfall, fall back to sequential priority for remaining gap
-                if shortfall > 0:
-                    withdrawable_assets = [a for a in assets if a.is_withdrawable]
-                    priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
-                    sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
-                    remaining_shortfall = shortfall
-                    for asset in sorted_assets:
-                        if remaining_shortfall <= 0:
+                if use_blended:
+                    # ── Blended Tax-Optimised Strategy ──
+                    # Step A: Draw isa_drawdown_pct% from each ISA (tax-free)
+                    isa_assets = [a for a in assets if a.type == "isa" and a.is_withdrawable and a.balance > 0]
+                    for asset in isa_assets:
+                        if shortfall <= 0:
                             break
-                        if asset.balance > 0:
-                            max_draw = (
-                                asset.max_annual_withdrawal
-                                if asset.max_annual_withdrawal is not None
-                                else float("inf")
-                            )
-                            withdrawal = min(asset.balance, remaining_shortfall, max_draw)
+                        draw_target = asset.balance * (bp.isa_drawdown_pct / 100.0)
+                        withdrawal = min(asset.balance, draw_target, shortfall)
+                        if withdrawal > 0:
                             asset.balance -= withdrawal
-                            remaining_shortfall -= withdrawal
+                            shortfall -= withdrawal
                             generated_income += withdrawal
                             src_name = f"Withdrawal: {asset.name}"
                             income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
+                            # ISA is tax-free — no tax attribution needed, but track ownership
                             if not asset.owners:
-                                if people:
-                                    pid = next(iter(people))
-                                    _attribute_withdrawal_tax_with_sources(
-                                        pid, withdrawal, asset, src_name,
-                                        person_taxable_income, person_cgt_gains, person_cgt_property_gains,
-                                        person_tax_free_remaining,
-                                        person_source_taxable, person_source_cgt, person_source_property_cgt
-                                    )
+                                pass  # tax-free, no attribution
                             else:
                                 for ownership in asset.owners:
                                     pid = ownership.person_id
                                     if pid not in people:
                                         continue
-                                    share_amount = withdrawal * ownership.share
-                                    _attribute_withdrawal_tax_with_sources(
-                                        pid, share_amount, asset, src_name,
-                                        person_taxable_income, person_cgt_gains, person_cgt_property_gains,
-                                        person_tax_free_remaining,
-                                        person_source_taxable, person_source_cgt, person_source_property_cgt
-                                    )
+                                    # ISA withdrawals are tax-free, no _attribute call
 
-            else:
-                # ── Sequential (original) Strategy ──
-                withdrawable_assets = [a for a in assets if a.is_withdrawable]
-                priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
-                sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
-
-                remaining_shortfall = shortfall
-                for asset in sorted_assets:
-                    if remaining_shortfall <= 0:
-                        break
-                    if asset.balance > 0:
-                        max_draw = (
-                            asset.max_annual_withdrawal
-                            if asset.max_annual_withdrawal is not None
-                            else float("inf")
-                        )
-                        withdrawal = min(asset.balance, remaining_shortfall, max_draw)
+                    # Step B: Draw pension_drawdown_pct% from each DC pension (taxable)
+                    pension_assets = [a for a in assets if a.type == "pension" and a.is_withdrawable and a.balance > 0]
+                    isa_topup_remaining = bp.isa_topup_from_pension  # £20k default
+                    for asset in pension_assets:
+                        if shortfall <= 0 and isa_topup_remaining <= 0:
+                            break
+                        draw_target = asset.balance * (bp.pension_drawdown_pct / 100.0)
+                        # Maximum useful draw is what's needed for the shortfall PLUS what we can recycle into ISA
+                        max_useful_draw = shortfall + isa_topup_remaining
+                        pension_draw = min(draw_target, max_useful_draw)
+                    
+                        withdrawal = min(asset.balance, pension_draw)
+                        if withdrawal <= 0:
+                            continue
+                    
                         asset.balance -= withdrawal
-                        remaining_shortfall -= withdrawal
                         generated_income += withdrawal
                         src_name = f"Withdrawal: {asset.name}"
-                        income_breakdown[src_name] = withdrawal
+                        income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
 
-                        # ── Tax attribution by ownership ──
+                        # Tax attribution for pension withdrawal
                         if not asset.owners:
                             if people:
                                 pid = next(iter(people))
@@ -428,6 +325,109 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                                     person_tax_free_remaining,
                                     person_source_taxable, person_source_cgt, person_source_property_cgt
                                 )
+
+                        # Step C: Recycle part of the pension drawdown into ISA (up to £20k/yr)
+                        topup = 0.0
+                        if isa_topup_remaining > 0 and isa_assets:
+                            topup = min(withdrawal, isa_topup_remaining)
+                            # Top up the first ISA found
+                            isa_assets[0].balance += topup
+                            isa_topup_remaining -= topup
+                            income_breakdown[f"ISA Top-up (from {asset.name})"] = income_breakdown.get(f"ISA Top-up (from {asset.name})", 0.0) + topup
+
+                        # The remaining withdrawal goes towards satisfying the lifestyle shortfall
+                        covers_shortfall = withdrawal - topup
+                        if covers_shortfall > 0:
+                            shortfall -= covers_shortfall
+
+                    # Step D: If still shortfall, fall back to sequential priority for remaining gap
+                    if shortfall > 0:
+                        withdrawable_assets = [a for a in assets if a.is_withdrawable]
+                        priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                        sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
+                        remaining_shortfall = shortfall
+                        for asset in sorted_assets:
+                            if remaining_shortfall <= 0:
+                                break
+                            if asset.balance > 0:
+                                max_draw = (
+                                    asset.max_annual_withdrawal
+                                    if asset.max_annual_withdrawal is not None
+                                    else float("inf")
+                                )
+                                withdrawal = min(asset.balance, remaining_shortfall, max_draw)
+                                asset.balance -= withdrawal
+                                remaining_shortfall -= withdrawal
+                                generated_income += withdrawal
+                                src_name = f"Withdrawal: {asset.name}"
+                                income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
+                                if not asset.owners:
+                                    if people:
+                                        pid = next(iter(people))
+                                        _attribute_withdrawal_tax_with_sources(
+                                            pid, withdrawal, asset, src_name,
+                                            person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                            person_tax_free_remaining,
+                                            person_source_taxable, person_source_cgt, person_source_property_cgt
+                                        )
+                                else:
+                                    for ownership in asset.owners:
+                                        pid = ownership.person_id
+                                        if pid not in people:
+                                            continue
+                                        share_amount = withdrawal * ownership.share
+                                        _attribute_withdrawal_tax_with_sources(
+                                            pid, share_amount, asset, src_name,
+                                            person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                            person_tax_free_remaining,
+                                            person_source_taxable, person_source_cgt, person_source_property_cgt
+                                        )
+
+                else:
+                    # ── Sequential (original) Strategy ──
+                    withdrawable_assets = [a for a in assets if a.is_withdrawable]
+                    priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                    sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
+
+                    remaining_shortfall = shortfall
+                    for asset in sorted_assets:
+                        if remaining_shortfall <= 0:
+                            break
+                        if asset.balance > 0:
+                            max_draw = (
+                                asset.max_annual_withdrawal
+                                if asset.max_annual_withdrawal is not None
+                                else float("inf")
+                            )
+                            withdrawal = min(asset.balance, remaining_shortfall, max_draw)
+                            asset.balance -= withdrawal
+                            remaining_shortfall -= withdrawal
+                            generated_income += withdrawal
+                            src_name = f"Withdrawal: {asset.name}"
+                            income_breakdown[src_name] = withdrawal
+
+                            # ── Tax attribution by ownership ──
+                            if not asset.owners:
+                                if people:
+                                    pid = next(iter(people))
+                                    _attribute_withdrawal_tax_with_sources(
+                                        pid, withdrawal, asset, src_name,
+                                        person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                        person_tax_free_remaining,
+                                        person_source_taxable, person_source_cgt, person_source_property_cgt
+                                    )
+                            else:
+                                for ownership in asset.owners:
+                                    pid = ownership.person_id
+                                    if pid not in people:
+                                        continue
+                                    share_amount = withdrawal * ownership.share
+                                    _attribute_withdrawal_tax_with_sources(
+                                        pid, share_amount, asset, src_name,
+                                        person_taxable_income, person_cgt_gains, person_cgt_property_gains,
+                                        person_tax_free_remaining,
+                                        person_source_taxable, person_source_cgt, person_source_property_cgt
+                                    )
 
         # 5. Compute tax per person and proportionally attribute to sources
         person_tax: Dict[str, Dict[str, float]] = {}
