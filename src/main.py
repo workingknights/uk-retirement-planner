@@ -1,21 +1,26 @@
-from fastapi import FastAPI, HTTPException, Request
-from workers import WorkerEntrypoint
-import asgi
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import os
 import json
-import uuid
-from typing import List
-
-from models import SimulationParams
-from engine import run_simulation
 import traceback
+import os
+import sys
 
-app = FastAPI(title="UK Retirement Planner API")
+IMPORT_ERROR = None
+try:
+    from fastapi import FastAPI, HTTPException, Request
+    from workers import WorkerEntrypoint
+    import asgi
+    from fastapi.middleware.cors import CORSMiddleware
+    from pydantic import BaseModel
+    import uuid
+    from typing import List
 
-# Configure CORS for frontend access
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    from models import SimulationParams
+    from engine import run_simulation
+
+    app = FastAPI(title="UK Retirement Planner API")
+    # Configure CORS for frontend access
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+except Exception as e:
+    IMPORT_ERROR = f"Startup Error: {str(e)}\n{traceback.format_exc()}"
 
 # Standard FastAPI endpoints below...
 
@@ -121,18 +126,17 @@ async def delete_scenario(scenario_id: str, request: Request):
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
+        from js import Response, Object
+        if IMPORT_ERROR:
+            headers = Object.fromEntries([["Content-Type", "text/plain"]])
+            return Response.new(f"IMPORT ERROR:\n{IMPORT_ERROR}", Object.fromEntries([["status", 500], ["headers", headers]]))
+        
         try:
-            # Set env on request state so FastAPI can access it (if needed elsewhere)
-            # but asgi.fetch uses the raw request and env directly usually
-            
-            # Use the raw JS request object if available (it usually is in this runtime)
+            # Use the raw JS request object if available
             req_to_use = getattr(request, "js_object", request)
             return await asgi.fetch(app, req_to_use, env)
         except Exception as e:
-            import traceback
-            error_msg = f"Worker Error: {str(e)}\n{traceback.format_exc()}"
-            print(error_msg)
-            from js import Response, Object
+            error_msg = f"Runtime Error: {str(e)}\n{traceback.format_exc()}"
             headers = Object.fromEntries([["Content-Type", "text/plain"]])
             return Response.new(error_msg, Object.fromEntries([["status", 500], ["headers", headers]]))
 
