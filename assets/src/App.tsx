@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, LineChart } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
+
+interface AuthState {
+  checked: boolean        // has the /api/me fetch completed?
+  authenticated: boolean
+  email: string | null
+  local: boolean          // true when running without Cloudflare Access configured
+}
 
 // Basic types
 type AssetType = 'isa' | 'pension' | 'general' | 'cash' | 'property' | 'rsu' | 'premium_bonds'
@@ -116,11 +123,26 @@ function App() {
   const [whatIfsExpanded, setWhatIfsExpanded] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
 
+  const [auth, setAuth] = useState<AuthState>({ checked: false, authenticated: false, email: null, local: true })
+
   const [scenarios, setScenarios] = useState<{ id: string, name: string, last_modified?: number }[]>([])
   const [showLoadModal, setShowLoadModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [currentScenarioName, setCurrentScenarioName] = useState('')
+
+  // Whether save/load should be available to this user
+  const scenariosEnabled = auth.local || auth.authenticated
+
+  const fetchAuth = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/me`)
+      const data = await res.json()
+      setAuth({ checked: true, authenticated: !!data.authenticated, email: data.email ?? null, local: !!data.local })
+    } catch {
+      setAuth({ checked: true, authenticated: false, email: null, local: false })
+    }
+  }
 
   const fetchScenarios = async () => {
     try {
@@ -131,8 +153,12 @@ function App() {
   }
 
   useEffect(() => {
-    fetchScenarios()
+    fetchAuth()
   }, [])
+
+  useEffect(() => {
+    if (scenariosEnabled) fetchScenarios()
+  }, [scenariosEnabled])
 
   const handleSaveScenario = async () => {
     if (!saveName.trim()) return
@@ -355,8 +381,26 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
+  // Cloudflare Access login URL (used only in prod when Access is configured)
+  const loginUrl = `/cdn-cgi/access/login${window.location.pathname}`
+
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
+
+      {/* Auth banner — shown in prod when not yet authenticated */}
+      {auth.checked && !auth.local && !auth.authenticated && (
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-sm text-amber-800">
+          <span>Sign in to save and load scenarios across sessions.</span>
+          <a
+            href={loginUrl}
+            className="flex items-center space-x-1.5 font-semibold text-amber-900 hover:text-amber-700 transition-colors"
+          >
+            <LogIn size={16} />
+            <span>Sign In</span>
+          </a>
+        </div>
+      )}
+
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
@@ -364,7 +408,14 @@ function App() {
           </h1>
           <p className="text-slate-500 mt-1">Plan your future with confidence and clarity.</p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex items-center space-x-3">
+          {/* User badge — shown when authenticated */}
+          {auth.authenticated && auth.email && (
+            <div className="flex items-center space-x-1.5 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">
+              <UserCircle size={16} className="text-indigo-500" />
+              <span className="hidden sm:inline max-w-[160px] truncate">{auth.email}</span>
+            </div>
+          )}
           <button
             onClick={() => setSidebarVisible(!sidebarVisible)}
             title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
@@ -373,15 +424,19 @@ function App() {
             {sidebarVisible ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
           </button>
           <button
-            onClick={() => setShowLoadModal(true)}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
+            onClick={() => scenariosEnabled ? setShowLoadModal(true) : undefined}
+            disabled={!scenariosEnabled}
+            title={!scenariosEnabled ? 'Sign in to load scenarios' : 'Load a saved scenario'}
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download size={18} />
             <span className="hidden sm:inline">Load</span>
           </button>
           <button
-            onClick={handleOpenSaveModal}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
+            onClick={scenariosEnabled ? handleOpenSaveModal : undefined}
+            disabled={!scenariosEnabled}
+            title={!scenariosEnabled ? 'Sign in to save scenarios' : 'Save current scenario'}
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save size={18} />
             <span>Save</span>

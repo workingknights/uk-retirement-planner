@@ -7,13 +7,14 @@ import uuid
 import time
 
 # Top-level imports for snapshotting
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asgi
 
 from models import SimulationParams
 from engine import run_simulation
+from auth import get_current_user, get_user_id
 
 # Initialize FastAPI app at module scope for snapshotting
 app = FastAPI(title="UK Retirement Planner API")
@@ -33,30 +34,75 @@ async def health_check():
     """Health check endpoint must be async to avoid threadpool usage."""
     return {"status": "ok", "message": "Backend is alive (Async)", "python": sys.version}
 
+
+@app.get("/api/me")
+async def me(request: Request):
+    """
+    Returns the current user's auth status.
+    Used by the frontend to decide whether to show the login prompt.
+    """
+    env = getattr(request.state, "env", {}) or {}
+    aud = env.get("CF_ACCESS_AUD") if isinstance(env, dict) else getattr(env, "CF_ACCESS_AUD", None)
+    team = env.get("CF_TEAM_NAME") if isinstance(env, dict) else getattr(env, "CF_TEAM_NAME", None)
+
+    if not aud or not team:
+        # Local dev — auth not configured
+        return {"authenticated": False, "email": None, "local": True}
+
+    try:
+        user = await get_current_user(request)
+        if user is None:
+            return {"authenticated": False, "email": None, "local": False}
+        return {"authenticated": True, "email": user.get("email"), "local": False}
+    except HTTPException:
+        return {"authenticated": False, "email": None, "local": False}
+
+
 @app.post("/api/simulate")
 async def simulate(params: SimulationParams):
-    """Simulation endpoint must be async to avoid threadpool usage."""
+    """Simulation endpoint — no auth required, runs for anyone."""
     try:
-        # Note: run_simulation is currently synchronous. 
-        # In a real async environment, we might use a thread pool, 
-        # but here we MUST run it on the main loop because there ARE no threads.
         result = run_simulation(params)
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 class ScenarioSaveRequest(BaseModel):
     name: str
     data: SimulationParams
 
+
+def _require_auth(user):
+    """Raise 401 if running in prod but no valid user. Return user_id or None locally."""
+    if user is None:
+        # Running locally (auth not configured) — KV isn't available either so this
+        # is a no-op; the KV check below will still raise a 500.
+        return None
+    uid = get_user_id(user)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Could not determine user identity from token.")
+    return uid
+
+
+def _user_key(user_id: str | None, scenario_id: str) -> str:
+    """Build a namespaced KV key. Locally (no user_id) just use the bare id."""
+    if user_id:
+        return f"{user_id}:{scenario_id}"
+    return scenario_id
+
+
 @app.get("/api/scenarios")
-async def list_scenarios(request: Request):
+async def list_scenarios(request: Request, user=Depends(get_current_user)):
     kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
     if not kv:
         return {"success": True, "data": [], "message": "KV not configured"}
-    
+
+    user_id = _require_auth(user)
+    prefix = f"{user_id}:" if user_id else ""
+
     try:
-        keys = await kv.list()
+        keys = await kv.list(prefix=prefix) if prefix else await kv.list()
         scenarios = []
         for key in keys.keys:
             val = await kv.get(key.name)
@@ -68,49 +114,68 @@ async def list_scenarios(request: Request):
                     "last_modified": content.get("last_modified", 0)
                 })
         return {"success": True, "data": scenarios}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
 @app.post("/api/scenarios")
-async def save_scenario(req: ScenarioSaveRequest, request: Request):
+async def save_scenario(req: ScenarioSaveRequest, request: Request, user=Depends(get_current_user)):
     kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
-    
+
+    user_id = _require_auth(user)
+
     scenario_id = str(uuid.uuid4())
+    kv_key = _user_key(user_id, scenario_id)
     scenario_doc = {
         "id": scenario_id,
         "name": req.name,
         "data": req.data.dict(),
         "last_modified": time.time()
     }
-    await kv.put(scenario_id, json.dumps(scenario_doc))
+    await kv.put(kv_key, json.dumps(scenario_doc))
     return {"success": True, "data": {"id": scenario_id}}
 
+
 @app.get("/api/scenarios/{scenario_id}")
-async def get_scenario(scenario_id: str, request: Request):
+async def get_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
     kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
-    
-    val = await kv.get(scenario_id)
+
+    user_id = _require_auth(user)
+    kv_key = _user_key(user_id, scenario_id)
+
+    val = await kv.get(kv_key)
     if not val:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return {"success": True, "data": json.loads(val)}
 
+
 @app.delete("/api/scenarios/{scenario_id}")
-async def delete_scenario(scenario_id: str, request: Request):
+async def delete_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
     kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
-    await kv.delete(scenario_id)
+
+    user_id = _require_auth(user)
+    kv_key = _user_key(user_id, scenario_id)
+
+    # Verify the key exists (and belongs to this user) before deleting
+    val = await kv.get(kv_key)
+    if not val:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    await kv.delete(kv_key)
     return {"success": True}
 
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
-            # Use raw request if available
             req_to_use = getattr(request, "js_object", request)
             return await asgi.fetch(app, req_to_use, env)
         except Exception as e:
@@ -123,4 +188,4 @@ class Default(WorkerEntrypoint):
                 "detail": error_msg
             }), Object.fromEntries([["status", 500], ["headers", headers]]))
 
-print("--- WORKER MODULE LOADED (ASYNC ROUTES) ---")
+print("--- WORKER MODULE LOADED (WITH AUTH) ---")

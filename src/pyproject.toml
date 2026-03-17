@@ -5,7 +5,9 @@ description = "UK Retirement Planner API"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi<0.110.0",
-    "pydantic<2.0.0"
+    "pydantic<2.0.0",
+    "PyJWT>=2.8.0",
+    "cryptography>=42.0.0"
 ]
 
 [dependency-groups]
