@@ -20,110 +20,94 @@ try:
     app = FastAPI(title="UK Retirement Planner API")
     # Configure CORS for frontend access
     allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
+    # Move all routes inside the try block
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok", "message": "Backend is alive"}
+
+    class ScenarioSaveRequest(BaseModel):
+        name: str
+        data: SimulationParams
+
+    @app.post("/api/simulate")
+    def simulate(params: SimulationParams):
+        result = run_simulation(params)
+        return {"success": True, "data": result}
+
+    @app.get("/api/scenarios")
+    async def list_scenarios(request: Request):
+        kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+        if not kv:
+            scenarios = []
+            if os.path.exists(SCENARIOS_DIR):
+                for filename in os.listdir(SCENARIOS_DIR):
+                    if filename.endswith(".json"):
+                        with open(os.path.join(SCENARIOS_DIR, filename), "r") as f:
+                            content = json.load(f)
+                            scenarios.append({
+                                "id": content.get("id"),
+                                "name": content.get("name"),
+                                "last_modified": os.path.getmtime(os.path.join(SCENARIOS_DIR, filename))
+                            })
+            return {"success": True, "data": scenarios}
+        keys = await kv.list()
+        scenarios = []
+        for key in keys.keys:
+            val = await kv.get(key.name)
+            if val:
+                content = json.loads(val)
+                scenarios.append({"id": content.get("id"), "name": content.get("name"), "last_modified": content.get("last_modified", 0)})
+        return {"success": True, "data": scenarios}
+
+    @app.post("/api/scenarios")
+    async def save_scenario(req: ScenarioSaveRequest, request: Request):
+        kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+        import time
+        scenario_id = str(uuid.uuid4())
+        scenario_doc = {"id": scenario_id, "name": req.name, "data": req.data.dict(), "last_modified": time.time()}
+        if kv:
+            await kv.put(scenario_id, json.dumps(scenario_doc))
+        else:
+            try:
+                filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
+                with open(filepath, "w") as f:
+                    json.dump(scenario_doc, f, indent=2)
+            except Exception as e:
+                print(f"Error saving to disk: {e}")
+        return {"success": True, "data": {"id": scenario_id}}
+
+    @app.get("/api/scenarios/{scenario_id}")
+    async def get_scenario(scenario_id: str, request: Request):
+        kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+        if kv:
+            val = await kv.get(scenario_id)
+            if not val:
+                raise HTTPException(status_code=404, detail="Scenario not found")
+            return {"success": True, "data": json.loads(val)}
+        else:
+            filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
+            if not os.path.exists(filepath):
+                raise HTTPException(status_code=404, detail="Scenario not found")
+            with open(filepath, "r") as f:
+                return {"success": True, "data": json.load(f)}
+
+    @app.delete("/api/scenarios/{scenario_id}")
+    async def delete_scenario(scenario_id: str, request: Request):
+        kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+        if kv:
+            await kv.delete(scenario_id)
+            return {"success": True}
+        else:
+            filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                return {"success": True}
+
 except Exception as e:
     IMPORT_ERROR = f"Startup Error: {str(e)}\n{traceback.format_exc()}"
 
-# Standard FastAPI endpoints below...
-
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "message": "Backend is alive"}
-
-SCENARIOS_DIR = os.path.join(os.path.dirname(__file__), "scenarios")
-
-class ScenarioSaveRequest(BaseModel):
-    name: str
-    data: SimulationParams
-
-@app.get("/api/scenarios")
-async def list_scenarios(request: Request):
-    # Cloudflare KV access pattern
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
-    
-    if not kv:
-        # Local development fallback (mocking KV behavior)
-        scenarios = []
-        if os.path.exists(SCENARIOS_DIR):
-            for filename in os.listdir(SCENARIOS_DIR):
-                if filename.endswith(".json"):
-                    with open(os.path.join(SCENARIOS_DIR, filename), "r") as f:
-                        content = json.load(f)
-                        scenarios.append({
-                            "id": content.get("id"),
-                            "name": content.get("name"),
-                            "last_modified": os.path.getmtime(os.path.join(SCENARIOS_DIR, filename))
-                        })
-        return {"success": True, "data": scenarios}
-
-    # Real Cloudflare KV logic
-    keys = await kv.list()
-    scenarios = []
-    for key in keys.keys:
-        val = await kv.get(key.name)
-        if val:
-            content = json.loads(val)
-            scenarios.append({
-                "id": content.get("id"),
-                "name": content.get("name"),
-                "last_modified": content.get("last_modified", 0)
-            })
-    return {"success": True, "data": scenarios}
-
-@app.post("/api/scenarios")
-async def save_scenario(req: ScenarioSaveRequest, request: Request):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
-    import time
-    
-    scenario_id = str(uuid.uuid4())
-    scenario_doc = {
-        "id": scenario_id,
-        "name": req.name,
-        "data": req.data.dict(),
-        "last_modified": time.time()
-    }
-    
-    if kv:
-        # Save to KV
-        await kv.put(scenario_id, json.dumps(scenario_doc))
-    else:
-        # Local fallback
-        try:
-            filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
-            with open(filepath, "w") as f:
-                json.dump(scenario_doc, f, indent=2)
-        except Exception as e:
-            print(f"Error saving to disk: {e}")
-    
-    return {"success": True, "data": {"id": scenario_id}}
-
-@app.get("/api/scenarios/{scenario_id}")
-async def get_scenario(scenario_id: str, request: Request):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
-    
-    if kv:
-        val = await kv.get(scenario_id)
-        if not val:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        return {"success": True, "data": json.loads(val)}
-    else:
-        filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
-        if not os.path.exists(filepath):
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        with open(filepath, "r") as f:
-            return {"success": True, "data": json.load(f)}
-
-@app.delete("/api/scenarios/{scenario_id}")
-async def delete_scenario(scenario_id: str, request: Request):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
-    
-    if kv:
-        await kv.delete(scenario_id)
-        return {"success": True}
-    else:
-        filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
-        if os.path.exists(filepath):
-            os.remove(filepath)
-            return {"success": True}
+# Routes and models were moved inside the try-except block above
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
