@@ -32,10 +32,6 @@ def simulate(params: SimulationParams):
     return {"success": True, "data": result}
 
 SCENARIOS_DIR = os.path.join(os.path.dirname(__file__), "scenarios")
-try:
-    os.makedirs(SCENARIOS_DIR, exist_ok=True)
-except Exception as e:
-    print(f"Warning: Could not create scenarios directory: {e}")
 
 class ScenarioSaveRequest(BaseModel):
     name: str
