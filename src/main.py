@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from cloudflare import WorkerEntrypoint
+from workers import WorkerEntrypoint
 import asgi
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
