@@ -19,10 +19,9 @@ from engine import run_simulation
 app = FastAPI(title="UK Retirement Planner API")
 
 # --- CORS ---
-# Note: env is not available at module scope, so we'll use a wildcard or handle it in fetch
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Simplified for snapshot, can be refined in middleware if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,12 +29,17 @@ app.add_middleware(
 
 # --- ROUTES ---
 @app.get("/health")
-def health_check():
-    return {"status": "ok", "message": "Backend is alive (Snapshotted)", "python": sys.version}
+async def health_check():
+    """Health check endpoint must be async to avoid threadpool usage."""
+    return {"status": "ok", "message": "Backend is alive (Async)", "python": sys.version}
 
 @app.post("/api/simulate")
-def simulate(params: SimulationParams):
+async def simulate(params: SimulationParams):
+    """Simulation endpoint must be async to avoid threadpool usage."""
     try:
+        # Note: run_simulation is currently synchronous. 
+        # In a real async environment, we might use a thread pool, 
+        # but here we MUST run it on the main loop because there ARE no threads.
         result = run_simulation(params)
         return {"success": True, "data": result}
     except Exception as e:
@@ -119,4 +123,4 @@ class Default(WorkerEntrypoint):
                 "detail": error_msg
             }), Object.fromEntries([["status", 500], ["headers", headers]]))
 
-print("--- WORKER MODULE LOADED (SNAPSHOTTED) ---")
+print("--- WORKER MODULE LOADED (ASYNC ROUTES) ---")
