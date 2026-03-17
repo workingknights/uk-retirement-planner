@@ -32,7 +32,10 @@ def simulate(params: SimulationParams):
     return {"success": True, "data": result}
 
 SCENARIOS_DIR = os.path.join(os.path.dirname(__file__), "scenarios")
-os.makedirs(SCENARIOS_DIR, exist_ok=True)
+try:
+    os.makedirs(SCENARIOS_DIR, exist_ok=True)
+except Exception as e:
+    print(f"Warning: Could not create scenarios directory: {e}")
 
 class ScenarioSaveRequest(BaseModel):
     name: str
@@ -90,9 +93,13 @@ async def save_scenario(req: ScenarioSaveRequest, request: Request):
         await kv.put(scenario_id, json.dumps(scenario_doc))
     else:
         # Local fallback
-        filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
-        with open(filepath, "w") as f:
-            json.dump(scenario_doc, f, indent=2)
+        try:
+            filepath = os.path.join(SCENARIOS_DIR, f"{scenario_id}.json")
+            with open(filepath, "w") as f:
+                json.dump(scenario_doc, f, indent=2)
+        except Exception as e:
+            print(f"Error saving scenario locally: {e}")
+            raise HTTPException(status_code=500, detail="Could not save scenario (KV missing and local disk read-only)")
             
     return {"success": True, "data": {"id": scenario_id}}
 
