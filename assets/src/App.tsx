@@ -385,13 +385,12 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
-  // Login URL: points to the Worker domain's Cloudflare Access login endpoint.
-  // After login, CF_Authorization cookie is set for the Worker domain and the user
-  // is redirected back to this page. Subsequent API calls with credentials:include
-  // will automatically carry that cookie to the Worker.
+  // Login URL: points to the custom /api/login endpoint on the Worker.
+  // Cloudflare Access intercepts this, forces login, and then redirects back to
+  // the Worker endpoint which in turn returns a 302 redirect back to the frontend.
   const loginUrl = API_BASE_URL
-    ? `${API_BASE_URL}/cdn-cgi/access/login?redirect_url=${encodeURIComponent(window.location.href)}`
-    : `/cdn-cgi/access/login?redirect_url=${encodeURIComponent(window.location.href)}`
+    ? `${API_BASE_URL}/api/login?to=${encodeURIComponent(window.location.href)}`
+    : `/api/login?to=${encodeURIComponent(window.location.href)}`
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">

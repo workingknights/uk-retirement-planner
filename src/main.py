@@ -65,6 +65,17 @@ async def me(request: Request):
         return {"authenticated": False, "email": None, "local": False}
 
 
+@app.get("/api/login")
+async def login_redirect(to: str = "https://uk-retirement-planner.pages.dev/"):
+    """
+    Endpoint to trigger Cloudflare Access login flow and bounce back to the frontend.
+    The browser visits this URL -> CF Access intercepts -> user logs in -> 
+    CF Access returns here -> we redirect back to the frontend app.
+    """
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=to)
+
+
 @app.post("/api/simulate")
 async def simulate(params: SimulationParams):
     """Simulation endpoint — no auth required, runs for anyone."""
