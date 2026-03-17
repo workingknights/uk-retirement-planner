@@ -14,6 +14,11 @@ class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         global _cached_app, _startup_error
         
+        # 1. Inspect URL early
+        url = str(getattr(request, "url", "unknown"))
+        if "/ping" in url:
+            return "PONG (Raw Worker)"
+
         # 1. Extremely safe JS utilities
         try:
             from js import Response, Object
@@ -137,7 +142,6 @@ class Default(WorkerEntrypoint):
                     return {"success": True}
 
                 _cached_app = app
-                print("--- FASTAPI APP READY ---")
             except Exception as e:
                 _startup_error = f"{str(e)}\n{traceback.format_exc()}"
                 return safe_response(json.dumps({
@@ -151,6 +155,17 @@ class Default(WorkerEntrypoint):
             import asgi
             # Use raw request if available (for modern Cloudflare Workers)
             req_to_use = getattr(request, "js_object", request)
+            if "/health" in url:
+                # Targeted check for asgi.fetch failure
+                try:
+                    return await asgi.fetch(_cached_app, req_to_use, env)
+                except Exception as asgi_err:
+                    return safe_response(json.dumps({
+                        "success": False,
+                        "error": "ASGI FETCH ERROR",
+                        "detail": f"{str(asgi_err)}\n{traceback.format_exc()}"
+                    }), 500)
+            
             return await asgi.fetch(_cached_app, req_to_use, env)
         except Exception as e:
             error_msg = f"RUNTIME ERROR:\n{str(e)}\n{traceback.format_exc()}"
@@ -160,4 +175,4 @@ class Default(WorkerEntrypoint):
                 "detail": error_msg
             }), 500)
 
-print("--- WORKER MODULE LOADED ---")
+print("--- WORKER MODULE LOADED (V35) ---")
