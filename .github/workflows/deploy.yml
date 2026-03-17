@@ -34,6 +34,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy assets/dist --project-name=uk-retirement-planner
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
         
@@ -41,7 +46,8 @@ jobs:
         working-directory: src
         run: |
           # Use workers-py which provides the pywrangler CLI
-          $HOME/.local/bin/uv run --with workers-py pywrangler deploy
+          # Explicitly request python 3.13 for the uv environment
+          $HOME/.local/bin/uv run --python 3.13 --with workers-py pywrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
