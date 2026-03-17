@@ -133,8 +133,16 @@ async def delete_scenario(scenario_id: str, request: Request):
             return {"success": True}
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
-        # Bridging Cloudflare Request -> FastAPI
-        # request.js_object is the raw JS request required by asgi.fetch
-        return await asgi.fetch(app, request.js_object, env)
+        try:
+            # Bridging Cloudflare Request -> FastAPI
+            # request.js_object is the raw JS request required by asgi.fetch
+            return await asgi.fetch(app, request.js_object, env)
+        except Exception as e:
+            import traceback
+            error_msg = f"Worker Error: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            from js import Response, Object
+            headers = Object.fromEntries([["Content-Type", "text/plain"]])
+            return Response.new(error_msg, Object.fromEntries([["status", 500], ["headers", headers]]))
 
 print("--- BACKEND STARTUP SEQUENCE COMPLETE ---")
