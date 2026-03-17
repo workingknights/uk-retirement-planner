@@ -6,6 +6,7 @@ import sys
 
 IMPORT_ERROR = None
 app = None
+SCENARIOS_DIR = os.path.join(os.path.dirname(__file__), "scenarios")
 try:
     from fastapi import FastAPI, HTTPException, Request
     import asgi
