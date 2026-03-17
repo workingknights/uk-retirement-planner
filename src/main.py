@@ -20,9 +20,16 @@ from auth import get_current_user, get_user_id
 app = FastAPI(title="UK Retirement Planner API")
 
 # --- CORS ---
+# Must list origins explicitly (not "*") when allow_credentials=True,
+# otherwise browsers reject the response per the CORS spec.
+ALLOWED_ORIGINS = [
+    "https://uk-retirement-planner.pages.dev",
+    "http://localhost:5173",
+    "http://localhost:8000",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

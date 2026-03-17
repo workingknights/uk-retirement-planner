@@ -134,9 +134,13 @@ function App() {
   // Whether save/load should be available to this user
   const scenariosEnabled = auth.local || auth.authenticated
 
+  // Wrapper for all Worker API calls — sends cookies cross-origin for Cloudflare Access auth
+  const apiFetch = (url: string, options: RequestInit = {}) =>
+    fetch(url, { ...options, credentials: 'include' })
+
   const fetchAuth = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/me`)
+      const res = await apiFetch(`${API_BASE_URL}/api/me`)
       const data = await res.json()
       setAuth({ checked: true, authenticated: !!data.authenticated, email: data.email ?? null, local: !!data.local })
     } catch {
@@ -146,7 +150,7 @@ function App() {
 
   const fetchScenarios = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/scenarios`)
+      const res = await apiFetch(`${API_BASE_URL}/api/scenarios`)
       const data = await res.json()
       if (data.success) setScenarios(data.data)
     } catch (e) { console.error('Failed to fetch scenarios', e) }
@@ -172,7 +176,7 @@ function App() {
     }
 
     try {
-      await fetch(`${API_BASE_URL}/api/scenarios`, {
+      await apiFetch(`${API_BASE_URL}/api/scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: saveName.trim(), data: params })
@@ -191,7 +195,7 @@ function App() {
 
   const handleLoadScenario = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/scenarios/${id}`)
+      const res = await apiFetch(`${API_BASE_URL}/api/scenarios/${id}`)
       const data = await res.json()
       if (data.success) {
         // Robust backward-compatible merge with defaultParams
@@ -206,7 +210,7 @@ function App() {
 
   const handleDeleteScenario = async (id: string) => {
     try {
-      await fetch(`${API_BASE_URL}/api/scenarios/${id}`, { method: 'DELETE' })
+      await apiFetch(`${API_BASE_URL}/api/scenarios/${id}`, { method: 'DELETE' })
       fetchScenarios()
     } catch (e) { console.error('Failed to delete scenario', e) }
   }
@@ -215,7 +219,7 @@ function App() {
     setLoading(true)
     try {
       // 1. Fetch base scenario
-      const baseResponse = await fetch(`${API_BASE_URL}/api/simulate`, {
+      const baseResponse = await apiFetch(`${API_BASE_URL}/api/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
@@ -238,7 +242,7 @@ function App() {
             }))
           }
 
-          const response = await fetch(`${API_BASE_URL}/api/simulate`, {
+          const response = await apiFetch(`${API_BASE_URL}/api/simulate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(scenarioParams)
@@ -381,8 +385,13 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
-  // Cloudflare Access login URL (used only in prod when Access is configured)
-  const loginUrl = `/cdn-cgi/access/login${window.location.pathname}`
+  // Login URL: points to the Worker domain's Cloudflare Access login endpoint.
+  // After login, CF_Authorization cookie is set for the Worker domain and the user
+  // is redirected back to this page. Subsequent API calls with credentials:include
+  // will automatically carry that cookie to the Worker.
+  const loginUrl = API_BASE_URL
+    ? `${API_BASE_URL}/cdn-cgi/access/login?redirect_url=${encodeURIComponent(window.location.href)}`
+    : `/cdn-cgi/access/login?redirect_url=${encodeURIComponent(window.location.href)}`
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
