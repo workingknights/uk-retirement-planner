@@ -130,9 +130,21 @@ async def delete_scenario(scenario_id: str, request: Request):
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
+            # For debugging, return a direct response
+            from js import Response, Object
+            headers = Object.fromEntries([["Content-Type", "application/json"]])
+            
+            # Check if it's the health endpoint manually
+            # request.url is a JS string
+            url = str(request.url)
+            if "/health" in url:
+                return Response.new('{"status": "ok", "message": "Raw Worker is alive"}', Object.fromEntries([["status", 200], ["headers", headers]]))
+            
             # Bridging Cloudflare Request -> FastAPI
             # request.js_object is the raw JS request required by asgi.fetch
-            return await asgi.fetch(app, request.js_object, env)
+            # Some versions might just use request
+            # return await asgi.fetch(app, request.js_object, env)
+            return await asgi.fetch(app, request, env)
         except Exception as e:
             import traceback
             error_msg = f"Worker Error: {str(e)}\n{traceback.format_exc()}"
