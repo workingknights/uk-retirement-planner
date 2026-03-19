@@ -15,12 +15,9 @@ from typing import Optional
 
 from fastapi import HTTPException, Request
 
-try:
-    import jwt
-    from jwt.algorithms import RSAAlgorithm
-    _JWT_AVAILABLE = True
-except ImportError:
-    _JWT_AVAILABLE = False
+# Deferred until runtime to avoid Cloudflare Pyodide snapshot serialization errors.
+# PyJWT and cryptography contain native variables that cannot be snapshotted.
+_JWT_AVAILABLE = True  # We assume it's available and let it throw dynamically if not.
 
 # ---------------------------------------------------------------------------
 # In-process JWKS cache: { "keys": [...], "fetched_at": float }
@@ -92,6 +89,9 @@ async def get_current_user(request: Request) -> Optional[dict]:
         raise HTTPException(status_code=401, detail="Missing Cloudflare Access token.")
 
     try:
+        import jwt
+        from jwt.algorithms import RSAAlgorithm
+        
         jwks_keys = await _fetch_jwks(team)
 
         # Try each key until one validates the token
