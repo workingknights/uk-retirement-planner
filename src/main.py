@@ -66,14 +66,25 @@ async def me(request: Request):
 
 
 @app.get("/api/login")
-async def login_redirect(to: str = "https://uk-retirement-planner.pages.dev/"):
+async def login_redirect(request: Request, to: str = "https://uk-retirement-planner.pages.dev/"):
     """
     Endpoint to trigger Cloudflare Access login flow and bounce back to the frontend.
     The browser visits this URL -> CF Access intercepts -> user logs in -> 
-    CF Access returns here -> we redirect back to the frontend app.
+    CF Access returns here -> we redirect back to the frontend app, appending the CF token.
     """
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=to)
+    
+    token = request.headers.get("Cf-Access-Jwt-Assertion")
+    redirect_url = to
+    
+    if token:
+        delimiter = "&" if "?" in to else "#"
+        if "#" in to and delimiter == "#":
+            redirect_url = f"{to}&token={token}"
+        else:
+            redirect_url = f"{to}{delimiter}token={token}"
+            
+    return RedirectResponse(url=redirect_url)
 
 
 @app.post("/api/simulate")

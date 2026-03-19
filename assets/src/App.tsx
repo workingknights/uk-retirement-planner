@@ -134,9 +134,16 @@ function App() {
   // Whether save/load should be available to this user
   const scenariosEnabled = auth.local || auth.authenticated
 
-  // Wrapper for all Worker API calls — sends cookies cross-origin for Cloudflare Access auth
-  const apiFetch = (url: string, options: RequestInit = {}) =>
-    fetch(url, { ...options, credentials: 'include' })
+  // Wrapper for all Worker API calls — sends token explicitly for Cloudflare Access cross-origin auth
+  const apiFetch = (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('cf_token');
+    const headers = new Headers(options.headers || {});
+    if (token) {
+      headers.set('Cf-Access-Jwt-Assertion', token);
+    }
+    // Keep credentials: 'include' for local dev compatibility if needed, but explicit token is what matters
+    return fetch(url, { ...options, headers, credentials: 'include' })
+  }
 
   const fetchAuth = async () => {
     try {
@@ -157,6 +164,31 @@ function App() {
   }
 
   useEffect(() => {
+    // Extract token from URL hash if returning from login redirect
+    const hash = window.location.hash;
+    const search = window.location.search;
+    
+    // The token might be in the hash or search depending on whether `to` already had a query string
+    let token = null;
+    
+    if (hash.includes('token=')) {
+      const params = new URLSearchParams(hash.replace('#', '?'));
+      token = params.get('token');
+      if (token) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } else if (search.includes('token=')) {
+      const params = new URLSearchParams(search);
+      token = params.get('token');
+      if (token) {
+        params.delete('token');
+        const newSearch = params.toString() ? '?' + params.toString() : '';
+        window.history.replaceState(null, '', window.location.pathname + newSearch + window.location.hash);
+      }
+    }
+
+    if (token) {
+      localStorage.setItem('cf_token', token);
+    }
+
     fetchAuth()
   }, [])
 
