@@ -72,8 +72,8 @@ async def get_current_user(request: Request) -> Optional[dict]:
     Raises:
         HTTPException(401) — token missing or invalid in a deployed environment.
     """
-    # Retrieve env from request state (populated by the Worker entrypoint)
-    env = getattr(request.state, "env", {}) or {}
+    # Retrieve env from scope (passed by asgi.fetch)
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
     aud = env.get("CF_ACCESS_AUD") if isinstance(env, dict) else getattr(env, "CF_ACCESS_AUD", None)
     team = env.get("CF_TEAM_NAME") if isinstance(env, dict) else getattr(env, "CF_TEAM_NAME", None)
 

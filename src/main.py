@@ -36,12 +36,6 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def inject_env(request: Request, call_next):
-    # The 'env' object is passed in the ASGI scope by the workers-py adapter
-    request.state.env = request.scope.get("env")
-    return await call_next(request)
-
 # --- ROUTES ---
 @app.get("/health")
 async def health_check():
@@ -55,7 +49,8 @@ async def me(request: Request):
     Returns the current user's auth status.
     Used by the frontend to decide whether to show the login prompt.
     """
-    env = getattr(request.state, "env", {}) or {}
+    # Retrieve env from scope (passed by asgi.fetch)
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
     aud = env.get("CF_ACCESS_AUD") if isinstance(env, dict) else getattr(env, "CF_ACCESS_AUD", None)
     team = env.get("CF_TEAM_NAME") if isinstance(env, dict) else getattr(env, "CF_TEAM_NAME", None)
 
@@ -113,7 +108,8 @@ def _user_key(user_id: str | None, scenario_id: str) -> str:
 
 @app.get("/api/scenarios")
 async def list_scenarios(request: Request, user=Depends(get_current_user)):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
+    kv = env.get("SCENARIOS_KV")
     if not kv:
         return {"success": True, "data": [], "message": "KV not configured"}
 
@@ -141,7 +137,8 @@ async def list_scenarios(request: Request, user=Depends(get_current_user)):
 
 @app.post("/api/scenarios")
 async def save_scenario(req: ScenarioSaveRequest, request: Request, user=Depends(get_current_user)):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
+    kv = env.get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
 
@@ -161,7 +158,8 @@ async def save_scenario(req: ScenarioSaveRequest, request: Request, user=Depends
 
 @app.get("/api/scenarios/{scenario_id}")
 async def get_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
+    kv = env.get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
 
@@ -176,7 +174,8 @@ async def get_scenario(scenario_id: str, request: Request, user=Depends(get_curr
 
 @app.delete("/api/scenarios/{scenario_id}")
 async def delete_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
-    kv = getattr(request.state, "env", {}).get("SCENARIOS_KV")
+    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
+    kv = env.get("SCENARIOS_KV")
     if not kv:
         raise HTTPException(status_code=500, detail="KV not configured")
 
