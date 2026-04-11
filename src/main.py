@@ -1,34 +1,28 @@
 from workers import WorkerEntrypoint
-import sys
-import os
 import json
 import traceback
-import uuid
-import time
-import asgi
 
-# Deferred imports of native/complex objects
-# from models import SimulationParams
-# from engine import run_simulation
-# from auth import get_current_user, get_user_id
-
-_app_instance = None
-
+# Defer all imports to runtime
 def get_app():
     global _app_instance
-    if _app_instance is not None:
+    if '_app_instance' in globals() and _app_instance is not None:
         return _app_instance
 
     from fastapi import FastAPI, HTTPException, Request, Depends
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
+    import sys
+    import os
+    import uuid
+    import time
+
+    # Local deferred imports
     from models import SimulationParams
     from engine import run_simulation
     from auth import get_current_user, get_user_id
 
     app = FastAPI(title="UK Retirement Planner API")
 
-    # --- CORS ---
     ALLOWED_ORIGINS = [
         "https://uk-retirement-planner.pages.dev",
         "http://localhost:5173",
@@ -42,10 +36,9 @@ def get_app():
         allow_headers=["*"],
     )
 
-    # --- ROUTES ---
     @app.get("/health")
     async def health_check():
-        return {"status": "ok", "message": "Backend is alive (Lazy)", "python": sys.version}
+        return {"status": "ok", "message": "Backend alive (Strict Lazy)"}
 
     @app.get("/api/me")
     async def me(request: Request):
@@ -61,13 +54,13 @@ def get_app():
             if user is None:
                 return {"authenticated": False, "email": None, "local": False}
             return {"authenticated": True, "email": user.get("email"), "local": False}
-        except HTTPException:
+        except Exception:
             return {"authenticated": False, "email": None, "local": False}
 
     @app.get("/api/login")
-    async def login_redirect(to: str = "https://uk-retirement-planner.pages.dev/"):
+    async def login_redirect():
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=to)
+        return RedirectResponse(url="https://uk-retirement-planner.pages.dev/")
 
     @app.post("/api/simulate")
     async def simulate(params: SimulationParams):
@@ -81,25 +74,18 @@ def get_app():
         name: str
         data: SimulationParams
 
-    def _require_auth(user):
-        if user is None: return None
-        uid = get_user_id(user)
-        if uid is None: raise HTTPException(status_code=401, detail="Could not determine user identity")
-        return uid
-
-    def _user_key(user_id: str | None, scenario_id: str) -> str:
-        return f"{user_id}:{scenario_id}" if user_id else scenario_id
-
     @app.get("/api/scenarios")
     async def list_scenarios(request: Request, user=Depends(get_current_user)):
         env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
         kv = env.get("SCENARIOS_KV")
-        if not kv: return {"success": True, "data": [], "message": "KV not configured"}
+        if not kv: return {"success": True, "data": []}
 
-        user_id = _require_auth(user)
-        prefix = f"{user_id}:" if user_id else ""
+        user_id = get_user_id(user)
+        if user_id is None: raise HTTPException(status_code=401)
+        prefix = f"{user_id}:"
+
         try:
-            keys = await kv.list(prefix=prefix) if prefix else await kv.list()
+            keys = await kv.list(prefix=prefix)
             scenarios = []
             for key in keys.keys:
                 val = await kv.get(key.name)
@@ -118,11 +104,15 @@ def get_app():
     async def save_scenario(req: ScenarioSaveRequest, request: Request, user=Depends(get_current_user)):
         env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
         kv = env.get("SCENARIOS_KV")
-        if not kv: raise HTTPException(status_code=500, detail="KV not configured")
+        if not kv: raise HTTPException(status_code=500)
 
-        user_id = _require_auth(user)
-        scenario_id = str(uuid.uuid4())
-        kv_key = _user_key(user_id, scenario_id)
+        user_id = get_user_id(user)
+        if user_id is None: raise HTTPException(status_code=401)
+        
+        # ... logic as before ...
+        import uuid as uuid_mod
+        scenario_id = str(uuid_mod.uuid4())
+        kv_key = f"{user_id}:{scenario_id}"
         scenario_doc = {
             "id": scenario_id,
             "name": req.name,
@@ -136,49 +126,28 @@ def get_app():
     async def get_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
         env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
         kv = env.get("SCENARIOS_KV")
-        if not kv: raise HTTPException(status_code=500, detail="KV not configured")
-
-        user_id = _require_auth(user)
-        kv_key = _user_key(user_id, scenario_id)
-        val = await kv.get(kv_key)
-        if not val: raise HTTPException(status_code=404, detail="Scenario not found")
+        user_id = get_user_id(user)
+        val = await kv.get(f"{user_id}:{scenario_id}")
+        if not val: raise HTTPException(status_code=404)
         return {"success": True, "data": json.loads(val)}
 
     @app.delete("/api/scenarios/{scenario_id}")
     async def delete_scenario(scenario_id: str, request: Request, user=Depends(get_current_user)):
         env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
         kv = env.get("SCENARIOS_KV")
-        if not kv: raise HTTPException(status_code=500, detail="KV not configured")
-
-        user_id = _require_auth(user)
-        kv_key = _user_key(user_id, scenario_id)
-        val = await kv.get(kv_key)
-        if not val: raise HTTPException(status_code=404, detail="Scenario not found")
-        await kv.delete(kv_key)
+        user_id = get_user_id(user)
+        await kv.delete(f"{user_id}:{scenario_id}")
         return {"success": True}
 
-    _app_instance = app
+    globals()['_app_instance'] = app
     return app
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
+            import asgi
             req_to_use = getattr(request, "js_object", request)
-            
-            # Simple /api/login logic to avoid FastAPI overhead for simple redirects
-            url_str = getattr(req_to_use, "url", getattr(request, "url", ""))
-            if "/api/login" in url_str:
-                from js import Response, Object
-                headers = Object.fromEntries([["Location", "https://uk-retirement-planner.pages.dev/"]])
-                return Response.new("", Object.fromEntries([["status", 302], ["headers", headers]]))
-                
             return await asgi.fetch(get_app(), req_to_use, env)
         except Exception as e:
             from js import Response, Object
-            error_msg = f"RUNTIME ERROR:\n{str(e)}\n{traceback.format_exc()}"
-            headers = Object.fromEntries([["Content-Type", "application/json"]])
-            return Response.new(json.dumps({
-                "success": False, "error": "Runtime Error", "detail": error_msg
-            }), Object.fromEntries([["status", 500], ["headers", headers]]))
-
-print("--- WORKER MODULE LOADED ---")
+            return Response.new(json.dumps({"error": str(e)}), Object.fromEntries([["status", 500]]))
