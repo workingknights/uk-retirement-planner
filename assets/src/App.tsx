@@ -205,15 +205,29 @@ function App() {
         await apiFetch(`${API_BASE_URL}/api/scenarios/${existing.id}`, { method: 'DELETE' });
       }
 
-      await apiFetch(`${API_BASE_URL}/api/scenarios`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: saveName.trim(), data: params })
       })
+      
+      const data = await res.json()
+      if (data.success && data.data && data.data.id) {
+        // Optimistic UI update to bypass Cloudflare KV list() eventual consistency (~60s delay)
+        let nextScenarios = scenarios;
+        if (existing && confirmOverwrite) {
+          nextScenarios = nextScenarios.filter(s => s.id !== existing.id);
+        }
+        nextScenarios = [...nextScenarios, { id: data.data.id, name: saveName.trim(), last_modified: Math.floor(Date.now() / 1000) }];
+        setScenarios(nextScenarios);
+      }
+
       setShowSaveModal(false)
       setConfirmOverwrite(false)
       setCurrentScenarioName(saveName.trim())
       setSaveName('')
+      
+      // Still fetch just in case, but rely on optimistic state primarily
       fetchScenarios()
     } catch (e) { console.error('Failed to save scenario', e) }
   }
