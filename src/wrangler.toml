@@ -1,7 +1,7 @@
 name = "uk-retirement-planner"
 main = "main.py"
 compatibility_date = "2025-11-02"
-compatibility_flags = ["python_workers", "python_dedicated_snapshot"]
+compatibility_flags = ["python_workers"]
 
 # Bind a KV Namespace. This allows your Worker to store data in a key-value store.
 [[kv_namespaces]]
