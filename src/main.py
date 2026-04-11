@@ -1,5 +1,4 @@
 from workers import WorkerEntrypoint
-import asgi
 
 _APP_CACHE = None
 
@@ -10,6 +9,6 @@ class Default(WorkerEntrypoint):
             from app_init import create_app
             _APP_CACHE = create_app()
         
-        # Ensure env is in the scope for the app to find it
+        import asgi
         req_to_use = getattr(request, "js_object", request)
         return await asgi.fetch(_APP_CACHE, req_to_use, env)
