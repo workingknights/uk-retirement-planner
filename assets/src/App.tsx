@@ -196,28 +196,40 @@ function App() {
     if (scenariosEnabled) fetchScenarios()
   }, [scenariosEnabled])
 
-  const handleSaveScenario = async () => {
-    if (!saveName.trim()) return
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false)
 
-    // Check if name already exists
-    const existing = scenarios.find(s => s.name.toLowerCase() === saveName.trim().toLowerCase());
-    if (existing) {
-      if (!window.confirm(`A scenario named "${saveName}" already exists. Do you want to overwrite it?`)) {
-        return;
-      }
-    }
-
+  const processSave = async () => {
     try {
+      const existing = scenarios.find(s => s.name.toLowerCase() === saveName.trim().toLowerCase());
+      if (existing && confirmOverwrite) {
+        await apiFetch(`${API_BASE_URL}/api/scenarios/${existing.id}`, { method: 'DELETE' });
+      }
+
       await apiFetch(`${API_BASE_URL}/api/scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: saveName.trim(), data: params })
       })
       setShowSaveModal(false)
+      setConfirmOverwrite(false)
       setCurrentScenarioName(saveName.trim())
       setSaveName('')
       fetchScenarios()
     } catch (e) { console.error('Failed to save scenario', e) }
+  }
+
+  const handleSaveScenario = async () => {
+    if (!saveName.trim()) return
+
+    if (!confirmOverwrite) {
+      const existing = scenarios.find(s => s.name.toLowerCase() === saveName.trim().toLowerCase());
+      if (existing) {
+        setConfirmOverwrite(true)
+        return;
+      }
+    }
+    
+    await processSave()
   }
 
   const handleOpenSaveModal = () => {
@@ -1039,13 +1051,30 @@ function App() {
               type="text"
               placeholder="e.g. Early Retirement"
               value={saveName}
-              onChange={e => setSaveName(e.target.value)}
+              onChange={e => {
+                setSaveName(e.target.value)
+                setConfirmOverwrite(false)
+              }}
               className="w-full p-2 border border-slate-300 rounded-lg mb-4"
               onKeyDown={e => e.key === 'Enter' && handleSaveScenario()}
             />
-            <div className="flex justify-end space-x-3">
-              <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={handleSaveScenario} disabled={!saveName.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">Save</button>
+          <div className="flex justify-end space-x-3">
+              <button 
+                onClick={() => {
+                  setShowSaveModal(false)
+                  setConfirmOverwrite(false)
+                }} 
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveScenario} 
+                disabled={!saveName.trim()} 
+                className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${confirmOverwrite ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              >
+                {confirmOverwrite ? "Confirm Overwrite" : "Save"}
+              </button>
             </div>
           </div>
         </div>
