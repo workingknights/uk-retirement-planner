@@ -55,3 +55,6 @@ src/scenarios/*.json
 build_logs.txt
 tail_logs.txt
 .wrangler/
+
+# Python modules
+src/python_modules/
