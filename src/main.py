@@ -5,13 +5,12 @@ import json
 import traceback
 import uuid
 import time
-
-# Deferred imports to avoid top-level serialization issues
 import asgi
 
-from models import SimulationParams
-from engine import run_simulation
-from auth import get_current_user, get_user_id
+# Deferred imports of native/complex objects
+# from models import SimulationParams
+# from engine import run_simulation
+# from auth import get_current_user, get_user_id
 
 _app_instance = None
 
@@ -23,6 +22,9 @@ def get_app():
     from fastapi import FastAPI, HTTPException, Request, Depends
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
+    from models import SimulationParams
+    from engine import run_simulation
+    from auth import get_current_user, get_user_id
 
     app = FastAPI(title="UK Retirement Planner API")
 
@@ -43,7 +45,7 @@ def get_app():
     # --- ROUTES ---
     @app.get("/health")
     async def health_check():
-        return {"status": "ok", "message": "Backend is alive (Lazily)", "python": sys.version}
+        return {"status": "ok", "message": "Backend is alive (Lazy)", "python": sys.version}
 
     @app.get("/api/me")
     async def me(request: Request):
@@ -61,6 +63,11 @@ def get_app():
             return {"authenticated": True, "email": user.get("email"), "local": False}
         except HTTPException:
             return {"authenticated": False, "email": None, "local": False}
+
+    @app.get("/api/login")
+    async def login_redirect(to: str = "https://uk-retirement-planner.pages.dev/"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=to)
 
     @app.post("/api/simulate")
     async def simulate(params: SimulationParams):
@@ -91,7 +98,6 @@ def get_app():
 
         user_id = _require_auth(user)
         prefix = f"{user_id}:" if user_id else ""
-
         try:
             keys = await kv.list(prefix=prefix) if prefix else await kv.list()
             scenarios = []
@@ -158,8 +164,15 @@ class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
             req_to_use = getattr(request, "js_object", request)
-            app = get_app()
-            return await asgi.fetch(app, req_to_use, env)
+            
+            # Simple /api/login logic to avoid FastAPI overhead for simple redirects
+            url_str = getattr(req_to_use, "url", getattr(request, "url", ""))
+            if "/api/login" in url_str:
+                from js import Response, Object
+                headers = Object.fromEntries([["Location", "https://uk-retirement-planner.pages.dev/"]])
+                return Response.new("", Object.fromEntries([["status", 302], ["headers", headers]]))
+                
+            return await asgi.fetch(get_app(), req_to_use, env)
         except Exception as e:
             from js import Response, Object
             error_msg = f"RUNTIME ERROR:\n{str(e)}\n{traceback.format_exc()}"
@@ -168,4 +181,4 @@ class Default(WorkerEntrypoint):
                 "success": False, "error": "Runtime Error", "detail": error_msg
             }), Object.fromEntries([["status", 500], ["headers", headers]]))
 
-print("--- WORKER MODULE LOADED (LAZY) ---")
+print("--- WORKER MODULE LOADED ---")
