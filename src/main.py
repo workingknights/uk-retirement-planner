@@ -154,7 +154,8 @@ class Default(WorkerEntrypoint):
                 
                 val = await kv.get(f"{uid}:{sid}")
                 if not val: return make_resp({"error": "not found"}, 404)
-                return make_resp({"success": True, "data": {"data": json.loads(val)}})
+                return make_resp({"success": True, "data": json.loads(val)})
+
 
             elif path.startswith("/api/scenarios/") and method == "DELETE":
                 uid = get_user_id()
