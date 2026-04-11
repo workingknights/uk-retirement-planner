@@ -14,8 +14,7 @@ def create_app():
     app = FastAPI(title="UK Retirement Planner API")
 
     # --- CORS ---
-    # MUST match the requesting Origin exactly in production.
-    # Note: No trailing slash.
+    # We still keep this here for non-OPTIONS requests
     ALLOWED_ORIGINS = [
         "https://uk-retirement-planner.pages.dev",
         "http://localhost:5173",
@@ -31,21 +30,44 @@ def create_app():
 
     def _get_env_var(env, key, default=None):
         if not env: return default
-        if isinstance(env, dict): return env.get(key, default)
-        return getattr(env, key, default)
+        # Cloudflare 'env' objects often don't support dict-like access
+        try:
+            val = getattr(env, key, None)
+            if val is not None: return val
+        except: pass
+        
+        try:
+            if hasattr(env, "get"): return env.get(key, default)
+        except: pass
+        
+        try:
+            if isinstance(env, dict): return env.get(key, default)
+        except: pass
+        
+        return default
 
     @app.get("/health")
     async def health_check():
-        return {"status": "ok", "message": "Backend alive (Ultimate Deferral)"}
+        return {"status": "ok", "message": "Backend alive (Production Fix V2)"}
 
     @app.get("/api/me")
     async def me(request: Request):
+        # The env is injected into the scope by asgi.fetch
         env = request.scope.get("env")
         aud = _get_env_var(env, "CF_ACCESS_AUD")
         team = _get_env_var(env, "CF_TEAM_NAME")
         
         if not aud or not team:
-            return {"authenticated": False, "email": None, "local": True}
+            # Still returning some debug info in the error to help identify why it's local
+            return {
+                "authenticated": False, 
+                "email": None, 
+                "local": True,
+                "debug": {
+                    "env_present": env is not None,
+                    "env_type": str(type(env))
+                }
+            }
             
         try:
             user = await get_current_user(request)
@@ -54,14 +76,6 @@ def create_app():
             return {"authenticated": True, "email": user.get("email"), "local": False}
         except Exception as e:
             return {"authenticated": False, "email": None, "local": False, "error": str(e)}
-
-    @app.post("/api/simulate")
-    async def simulate(params: SimulationParams):
-        try:
-            result = run_simulation(params)
-            return {"success": True, "data": result}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
 
     class ScenarioSaveRequest(BaseModel):
         name: str
@@ -72,7 +86,10 @@ def create_app():
         env = request.scope.get("env")
         kv = _get_env_var(env, "SCENARIOS_KV")
         if not kv:
-            # Still returning success: true to avoid breaking the frontend
+            # Fallback for checking KV directly on the request.state just in case
+            kv = getattr(request.state, "kv", None) or getattr(request.state, "SCENARIOS_KV", None)
+            
+        if not kv:
             return {"success": True, "data": [], "message": "KV not configured (env missing)"}
 
         uid = get_user_id(user)
@@ -81,9 +98,12 @@ def create_app():
             
         try:
             prefix = f"{uid}:"
-            keys = await kv.list(prefix=prefix)
+            # Some KV versions return a list, others are async
+            keys_obj = await kv.list(prefix=prefix)
+            keys = getattr(keys_obj, "keys", [])
+            
             scenarios = []
-            for key in keys.keys:
+            for key in keys:
                 val = await kv.get(key.name)
                 if val:
                     content = json.loads(val)
