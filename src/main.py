@@ -35,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # --- ROUTES ---
 @app.get("/health")
 async def health_check():
@@ -67,9 +66,15 @@ async def me(request: Request):
         return {"authenticated": False, "email": None, "local": False}
 
 
-from fastapi import FastAPI, HTTPException, Request, Depends, Header
-
-# Removed login_redirect endpoint from FastAPI to evade Cloudflare snapshotting edge-cases with endpoint type inspection. It is handled directly in the WorkerEntrypoint fetch override below.
+@app.get("/api/login")
+async def login_redirect(to: str = "https://uk-retirement-planner.pages.dev/"):
+    """
+    Endpoint to trigger Cloudflare Access login flow and bounce back to the frontend.
+    The browser visits this URL -> CF Access intercepts -> user logs in -> 
+    CF Access returns here -> we redirect back to the frontend app.
+    """
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=to)
 
 
 @app.post("/api/simulate")
@@ -195,30 +200,6 @@ class Default(WorkerEntrypoint):
     async def fetch(self, request, env, ctx):
         try:
             req_to_use = getattr(request, "js_object", request)
-            url_str = getattr(req_to_use, "url", getattr(request, "url", ""))
-            
-            # Intercept /api/login directly to bypass FastAPI router snapshotting issues
-            if "/api/login" in url_str:
-                from js import URL, Response, Object  # type: ignore
-                parsed_url = URL.new(url_str)
-                to_target = parsed_url.searchParams.get("to") or "https://uk-retirement-planner.pages.dev/"
-                
-                headers_obj = getattr(req_to_use, "headers", getattr(request, "headers", None))
-                token = None
-                if headers_obj and hasattr(headers_obj, "get"):
-                    token = headers_obj.get("Cf-Access-Jwt-Assertion")
-                    
-                redirect_url = to_target
-                if token:
-                    delimiter = "&" if "?" in to_target else "#"
-                    if "#" in to_target and delimiter == "#":
-                        redirect_url = f"{to_target}&token={token}"
-                    else:
-                        redirect_url = f"{to_target}{delimiter}token={token}"
-                        
-                resp_headers = Object.fromEntries([["Location", redirect_url]])
-                return Response.new("", Object.fromEntries([["status", 302], ["headers", resp_headers]]))
-                
             return await asgi.fetch(app, req_to_use, env)
         except Exception as e:
             from js import Response, Object
