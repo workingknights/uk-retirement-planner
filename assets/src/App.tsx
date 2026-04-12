@@ -122,6 +122,7 @@ function App() {
   const [eventsExpanded, setEventsExpanded] = useState(false)
   const [whatIfsExpanded, setWhatIfsExpanded] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [topRowExpanded, setTopRowExpanded] = useState(true)
 
   const [auth, setAuth] = useState<AuthState>({ checked: false, authenticated: false, email: null, local: true })
 
@@ -468,11 +469,20 @@ function App() {
       )}
 
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            UK Retirement Planner
-          </h1>
-          <p className="text-slate-500 mt-1">Plan your future with confidence and clarity.</p>
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+            title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shadow-sm transition-all"
+          >
+            {sidebarVisible ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              UK Retirement Planner
+            </h1>
+            <p className="text-slate-500 mt-1 hidden sm:block">Plan your future with confidence and clarity.</p>
+          </div>
         </div>
         <div className="flex items-center space-x-3">
           {/* User badge — shown when authenticated */}
@@ -482,13 +492,7 @@ function App() {
               <span className="hidden sm:inline max-w-[160px] truncate">{auth.email}</span>
             </div>
           )}
-          <button
-            onClick={() => setSidebarVisible(!sidebarVisible)}
-            title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
-            className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shadow-sm transition-all"
-          >
-            {sidebarVisible ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
-          </button>
+
           <button
             onClick={() => scenariosEnabled ? setShowLoadModal(true) : undefined}
             disabled={!scenariosEnabled}
@@ -519,10 +523,25 @@ function App() {
       </header>
 
       {/* Top Row: Household & Parameters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-        <section className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-slate-800">Household</h2>
+      <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
+        <div 
+          className="flex justify-between items-center p-4 cursor-pointer hover:bg-slate-100 transition-colors"
+          onClick={() => setTopRowExpanded(!topRowExpanded)}
+        >
+          <div className="flex items-center space-x-2">
+            {topRowExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+            <h2 className="text-lg font-semibold text-slate-800">Household & Parameters</h2>
+          </div>
+          <span className="text-xs text-slate-400 hidden sm:inline">
+            {params.people.length} People, {params.retirement_age} Retirement, £{params.desired_annual_income.toLocaleString()} Target
+          </span>
+        </div>
+        
+        {topRowExpanded && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 pt-2 border-t border-slate-200/60">
+            <section className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider">Household Members</h3>
             <button onClick={() => {
               const newPerson: Person = { id: Math.random().toString(36), name: 'New Person' }
               setParams(prev => ({ ...prev, people: [...prev.people, newPerson] }))
@@ -543,11 +562,11 @@ function App() {
             ))}
             {params.people.length === 0 && <p className="text-xs text-slate-400">Add people to enable tax modelling.</p>}
           </div>
-        </section>
+            </section>
 
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold text-slate-800">Parameters</h2>
-          <div className="grid grid-cols-2 gap-4">
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider">Parameters</h3>
+              <div className="grid grid-cols-2 gap-4">
             <label className="block text-sm font-medium text-slate-700">
               Current Age
               <input type="number" value={params.current_age} onChange={e => updateParam('current_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
@@ -597,8 +616,10 @@ function App() {
               </div>
               <p className="text-[10px] text-indigo-400 italic">From Apr 2027 pensions are subject to IHT — recycling into ISA is more tax-efficient</p>
             </div>
-          )}
-        </section>
+              )}
+            </section>
+          </div>
+        )}
       </div>
 
       <div className={`grid grid-cols-1 gap-8 ${sidebarVisible ? 'lg:grid-cols-4' : 'lg:grid-cols-1'}`}>
