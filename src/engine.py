@@ -298,17 +298,42 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                         # Maximum useful draw is what's needed for the shortfall PLUS what we can recycle into ISA
                         max_useful_draw = shortfall + isa_topup_remaining
                         pension_draw = min(draw_target, max_useful_draw)
-                    
+
                         withdrawal = min(asset.balance, pension_draw)
                         if withdrawal <= 0:
                             continue
-                    
-                        asset.balance -= withdrawal
-                        generated_income += withdrawal
-                        src_name = f"Withdrawal: {asset.name}"
-                        income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
 
-                        # Tax attribution for pension withdrawal
+                        # Step C: Recycle part of the pension drawdown into ISA (intra-account transfer).
+                        # This is calculated FIRST so we know how much of the withdrawal is real income vs transfer.
+                        topup = 0.0
+                        if isa_topup_remaining > 0 and isa_assets:
+                            topup = min(withdrawal, isa_topup_remaining)
+                            # Distribute sequentially across ISAs, capped at £20k each (annual allowance per person)
+                            topup_left = topup
+                            for isa in isa_assets:
+                                if topup_left <= 0:
+                                    break
+                                # Each ISA can absorb up to £20k per year
+                                isa_capacity = 20_000.0
+                                deposit = min(topup_left, isa_capacity)
+                                isa.balance += deposit
+                                topup_left -= deposit
+                            isa_topup_remaining -= topup
+                            # The ISA top-up is purely an intra-account transfer — it does NOT
+                            # appear in income_breakdown or generated_income.
+
+                        # Only the portion that actually pays for lifestyle counts as a withdrawal/income
+                        covers_shortfall = withdrawal - topup
+                        asset.balance -= withdrawal
+                        src_name = f"Withdrawal: {asset.name}"
+
+                        if covers_shortfall > 0:
+                            generated_income += covers_shortfall
+                            income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + covers_shortfall
+                            shortfall -= covers_shortfall
+
+                        # Tax attribution is on the FULL pension withdrawal (HMRC taxes the gross draw,
+                        # regardless of what portion ends up in an ISA wrapper).
                         if not asset.owners:
                             if people:
                                 pid = next(iter(people))
@@ -330,19 +355,6 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                                     person_tax_free_remaining,
                                     person_source_taxable, person_source_cgt, person_source_property_cgt
                                 )
-
-                        # Step C: Recycle part of the pension drawdown into ISA (up to £20k/yr)
-                        topup = 0.0
-                        if isa_topup_remaining > 0 and isa_assets:
-                            topup = min(withdrawal, isa_topup_remaining)
-                            # Top up the first ISA found
-                            isa_assets[0].balance += topup
-                            isa_topup_remaining -= topup
-
-                        # The remaining withdrawal goes towards satisfying the lifestyle shortfall
-                        covers_shortfall = withdrawal - topup
-                        if covers_shortfall > 0:
-                            shortfall -= covers_shortfall
 
                     # Step D: If still shortfall, fall back to sequential priority for remaining gap
                     if shortfall > 0:
