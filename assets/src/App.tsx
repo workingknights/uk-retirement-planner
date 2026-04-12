@@ -1005,16 +1005,19 @@ function App() {
 
           {/* Tabular View */}
           {simulationData && params.people.length > 0 && (() => {
-            // We need to collect all possible income sources across all years for columns
+            // Filter data to only show from 1 year prior to retirement
+            const tableData = simulationData.filter((year: any) => year.age >= params.retirement_age - 1);
+            
+            // Collect possible income sources across the visible years for columns
             const allIncomeKeys = new Set<string>();
-            simulationData.forEach((year: any) => {
+            tableData.forEach((year: any) => {
               Object.keys(year.income_breakdown).forEach(k => allIncomeKeys.add(k));
             });
             const incomeColumns = Array.from(allIncomeKeys);
 
             return (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-8">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Annual Breakdown</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Annual Breakdown (From Age {Math.max(params.current_age, params.retirement_age - 1)})</h3>
                 <div className="overflow-x-auto rounded-xl border border-slate-200">
                   <table className="min-w-full text-sm text-left text-slate-600">
                     <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-200">
@@ -1034,7 +1037,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {simulationData.map((year: any) => {
+                      {tableData.map((year: any) => {
                         const totalTax = params.people.reduce((sum, p) => sum + (year.tax_breakdown?.[p.name]?.total ?? 0), 0);
                         return (
                           <tr key={year.age} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
