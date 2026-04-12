@@ -450,9 +450,10 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
-  // Login URL: directly hits the Cloudflare Access login endpoint for the workers.dev app.
-  // After login, Cloudflare Access redirects back to pages.dev with the CF_Authorization cookie.
-  const loginUrl = `https://workingknights.cloudflareaccess.com/cdn-cgi/access/login/uk-retirement-planner.anthony-knights.workers.dev?redirect_url=${encodeURIComponent('https://uk-retirement-planner.pages.dev/')}`
+  // Login URL: Cloudflare Access intercepts requests to workers.dev/api/login.
+  // After the user authenticates, our worker extracts the JWT and redirects to
+  // pages.dev/?token=<jwt> so the frontend can store it in localStorage.
+  const loginUrl = `${API_BASE_URL}/api/login`
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">

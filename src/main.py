@@ -75,7 +75,34 @@ class Default(WorkerEntrypoint):
         # 3. Routes
         # -----------------------------
         try:
-            if path == "/api/me" and method == "GET":
+            if path == "/api/login":
+                # Cloudflare Access intercepts unauthenticated requests here and redirects
+                # to its login page. On return, Cf-Access-Jwt-Assertion is in the headers.
+                # We extract the raw token and pass it to pages.dev via ?token= query param.
+                raw_token = None
+                hdrs = req_js.headers
+                if hasattr(hdrs, "get"):
+                    raw_token = hdrs.get("Cf-Access-Jwt-Assertion")
+                    if not raw_token:
+                        c = hdrs.get("cookie") or ""
+                        if "CF_Authorization=" in c:
+                            raw_token = c.split("CF_Authorization=")[1].split(";")[0]
+
+                if raw_token:
+                    redirect_to = f"https://uk-retirement-planner.pages.dev/?token={raw_token}"
+                else:
+                    # No token yet — shouldn't happen (CF Access should have set it), fall back to home
+                    redirect_to = "https://uk-retirement-planner.pages.dev/"
+
+                from js import Object as JsObject
+                h = JsObject.fromEntries([
+                    ["Location", redirect_to],
+                    ["Access-Control-Allow-Origin", "https://uk-retirement-planner.pages.dev"],
+                    ["Access-Control-Allow-Credentials", "true"],
+                ])
+                return Response.new("", JsObject.fromEntries([["status", 302], ["headers", h]]))
+
+            elif path == "/api/me" and method == "GET":
                 uid = get_user_id()
                 if uid: return make_resp({"authenticated": True, "email": uid, "local": False})
                 return make_resp({"authenticated": False, "email": None, "local": False})
