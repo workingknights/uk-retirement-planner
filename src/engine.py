@@ -206,11 +206,16 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             person_source_dividends[pid][src_name] = person_source_dividends[pid].get(src_name, 0.0) + share_amount
 
         # 4. Withdraw from assets to cover income shortfall
-        shortfall = max(0.0, required_income - generated_income)
+        # Only enforce the target lifestyle during retirement. Before retirement, assume living within means.
+        if age < retirement_age:
+            shortfall = 0.0
+            required_income = generated_income  # Baseline to actual generated income
+        else:
+            shortfall = max(0.0, required_income - generated_income)
 
         if shortfall > 0:
             if age < retirement_age:
-                # ── Pre-Retirement Strategy ──
+                # ── Pre-Retirement Strategy (Fallback if forced by future life events) ──
                 # Only use cash, premium_bonds, rsu, general (no ISA or Pension)
                 allowed_types = {"cash", "premium_bonds", "rsu", "general"}
                 withdrawable_assets = [a for a in assets if a.is_withdrawable and a.type in allowed_types]
