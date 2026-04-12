@@ -338,7 +338,6 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             # Top up the first ISA found
                             isa_assets[0].balance += topup
                             isa_topup_remaining -= topup
-                            income_breakdown[f"ISA Top-up (from {asset.name})"] = income_breakdown.get(f"ISA Top-up (from {asset.name})", 0.0) + topup
 
                         # The remaining withdrawal goes towards satisfying the lifestyle shortfall
                         covers_shortfall = withdrawal - topup
