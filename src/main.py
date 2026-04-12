@@ -38,16 +38,9 @@ class Default(WorkerEntrypoint):
             return Response.new("", Object.fromEntries([["status", 204], ["headers", h]]))
 
         url_str = getattr(req_js, "url", "")
-        if "/api/login" in url_str:
-            h = Object.fromEntries([
-                ["Location", "https://uk-retirement-planner.pages.dev/"],
-                ["Access-Control-Allow-Origin", "https://uk-retirement-planner.pages.dev"],
-                ["Access-Control-Allow-Credentials", "true"],
-            ])
-            return Response.new("", Object.fromEntries([["status", 302], ["headers", h]]))
-
         parsed_url = URL.new(url_str)
         path = getattr(parsed_url, "pathname", "")
+
         
         # -----------------------------
         # 2. Extract Auth Token

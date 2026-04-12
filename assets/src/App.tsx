@@ -136,14 +136,20 @@ function App() {
   const scenariosEnabled = auth.local || auth.authenticated
 
   // Wrapper for all Worker API calls — sends token explicitly for Cloudflare Access cross-origin auth
-  const apiFetch = (url: string, options: RequestInit = {}) => {
+  const apiFetch = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('cf_token');
     const headers = new Headers(options.headers || {});
     if (token) {
       headers.set('Cf-Access-Jwt-Assertion', token);
     }
-    // Keep credentials: 'include' for local dev compatibility if needed, but explicit token is what matters
-    return fetch(url, { ...options, headers, credentials: 'include' })
+    // Use redirect:'manual' to prevent Safari from following Cloudflare Access login redirects,
+    // which would send Origin:null on the cross-origin redirect and fail CORS.
+    // An opaque redirect (type='opaqueredirect', status=0) means the user needs to authenticate.
+    const res = await fetch(url, { ...options, headers, credentials: 'include', redirect: 'manual' });
+    if (res.type === 'opaqueredirect' || res.status === 0) {
+      throw new Error('auth-redirect');
+    }
+    return res;
   }
 
   const fetchAuth = async () => {
@@ -444,12 +450,9 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
-  // Login URL: points to the custom /api/login endpoint on the Worker.
-  // Cloudflare Access intercepts this, forces login, and then redirects back to
-  // the Worker endpoint which in turn returns a 302 redirect back to the frontend.
-  const loginUrl = API_BASE_URL
-    ? `${API_BASE_URL}/api/login?to=${encodeURIComponent(window.location.href)}`
-    : `/api/login?to=${encodeURIComponent(window.location.href)}`
+  // Login URL: directly hits the Cloudflare Access login endpoint for the workers.dev app.
+  // After login, Cloudflare Access redirects back to pages.dev with the CF_Authorization cookie.
+  const loginUrl = `https://workingknights.cloudflareaccess.com/cdn-cgi/access/login/uk-retirement-planner.anthony-knights.workers.dev?redirect_url=${encodeURIComponent('https://uk-retirement-planner.pages.dev/')}`
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
