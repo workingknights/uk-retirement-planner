@@ -18,6 +18,20 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+// Diagnostic logging for deployment verification
+if (import.meta.env.DEV) {
+  console.log("🛠 Firebase Config Debugger (Local Dev):", {
+    hasKey: !!firebaseConfig.apiKey,
+    authDomain: firebaseConfig.authDomain,
+    env: "Development"
+  });
+} else {
+  // Limited logging for production to help verify build-time injection
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain) {
+    console.error("❌ CRITICAL: Firebase Configuration is missing! Ensure GitHub Secrets are set.");
+  }
+}
+
 // Initialize Firebase
 const firebaseApp = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(firebaseApp);
