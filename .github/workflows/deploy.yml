@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE: uk-retirement-planner
+
 
 jobs:
   deploy:
@@ -25,6 +25,7 @@ jobs:
 
       # ── GCP Authentication ──
       - name: Authenticate to GCP
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -37,15 +38,15 @@ jobs:
 
       # ── Backend: Build & Deploy to Cloud Run ──
       - name: Build Docker image
-        run: docker build -t gcr.io/$PROJECT_ID/$SERVICE .
+        run: docker build -t gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE .
 
       - name: Push Docker image
-        run: docker push gcr.io/$PROJECT_ID/$SERVICE
+        run: docker push gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image gcr.io/$PROJECT_ID/$SERVICE \
+            --image gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE \
             --region $REGION \
             --platform managed \
             --allow-unauthenticated \
@@ -80,4 +81,4 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
           channelId: live
-          projectId: ${{ secrets.GCP_PROJECT_ID }}
+          projectId: ${{ steps.auth.outputs.project_id }}
