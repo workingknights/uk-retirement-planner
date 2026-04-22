@@ -14,21 +14,17 @@ from firebase_admin import auth as firebase_auth, credentials
 
 @lru_cache(maxsize=1)
 def _init_firebase():
-    """Initialise Firebase Admin SDK (once). Uses Application Default Credentials on Cloud Run."""
+    """Initialise Firebase Admin SDK (once)."""
     if not firebase_admin._apps:
-        firebase_admin.initialize_app()
+        # Explicit project_id helps if environment detection fails
+        firebase_admin.initialize_app(options={
+            'projectId': 'uk-retirement-planner'
+        })
 
 
 def verify_token(authorization: Optional[str]) -> Optional[dict]:
     """
     Verify a Firebase ID token from the Authorization header.
-
-    Args:
-        authorization: The full 'Authorization' header value (e.g. 'Bearer eyJ...')
-
-    Returns:
-        dict with user info (uid, email, etc.) if valid.
-        None if missing or invalid.
     """
     if not authorization or not authorization.startswith("Bearer "):
         return None
@@ -39,7 +35,8 @@ def verify_token(authorization: Optional[str]) -> Optional[dict]:
         _init_firebase()
         decoded = firebase_auth.verify_id_token(token)
         return decoded
-    except Exception:
+    except Exception as e:
+        print(f"DEBUG: Firebase Token Verification Failed: {e}")
         return None
 
 
