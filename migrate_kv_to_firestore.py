@@ -33,8 +33,8 @@ def export_kv_data():
     """Export all KV data using wrangler CLI."""
     print("Listing KV keys...")
     result = subprocess.run(
-        ["npx", "wrangler", "kv:key", "list", f"--namespace-id={KV_NAMESPACE_ID}"],
-        capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "src")
+        ["npx", "wrangler", "kv", "key", "list", f"--namespace-id={KV_NAMESPACE_ID}"],
+        capture_output=True, text=True, cwd=os.path.dirname(__file__)
     )
     if result.returncode != 0:
         print(f"Error listing keys: {result.stderr}")
@@ -48,8 +48,8 @@ def export_kv_data():
         key_name = key_obj["name"]
         print(f"  Fetching: {key_name}")
         val_result = subprocess.run(
-            ["npx", "wrangler", "kv:get", key_name, f"--namespace-id={KV_NAMESPACE_ID}"],
-            capture_output=True, text=True, cwd=os.path.join(os.path.dirname(__file__), "src")
+            ["npx", "wrangler", "kv", "key", "get", f"--namespace-id={KV_NAMESPACE_ID}", key_name],
+            capture_output=True, text=True, cwd=os.path.dirname(__file__)
         )
         if val_result.returncode != 0:
             print(f"    SKIP (error): {val_result.stderr}")
