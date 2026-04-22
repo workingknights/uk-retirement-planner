@@ -27,14 +27,23 @@ from google.cloud import firestore
 
 
 KV_NAMESPACE_ID = "3425d31abf8940c8b9d7b9193634960d"
+ACCOUNT_ID = "037e9c0d842b4bdab78db12c878583d6"
 
 
 def export_kv_data():
     """Export all KV data using wrangler CLI."""
     print("Listing KV keys...")
+    
+    # Use environment variable for account ID since wrangler kv key commands 
+    # often don't support it as a flag.
+    env = os.environ.copy()
+    if ACCOUNT_ID:
+        env["CLOUDFLARE_ACCOUNT_ID"] = ACCOUNT_ID
+
     result = subprocess.run(
         ["npx", "wrangler", "kv", "key", "list", f"--namespace-id={KV_NAMESPACE_ID}"],
-        capture_output=True, text=True, cwd=os.path.dirname(__file__)
+        capture_output=True, text=True, cwd=os.path.dirname(__file__),
+        env=env
     )
     if result.returncode != 0:
         print(f"Error listing keys: {result.stderr}")
@@ -49,7 +58,8 @@ def export_kv_data():
         print(f"  Fetching: {key_name}")
         val_result = subprocess.run(
             ["npx", "wrangler", "kv", "key", "get", f"--namespace-id={KV_NAMESPACE_ID}", key_name],
-            capture_output=True, text=True, cwd=os.path.dirname(__file__)
+            capture_output=True, text=True, cwd=os.path.dirname(__file__),
+            env=env
         )
         if val_result.returncode != 0:
             print(f"    SKIP (error): {val_result.stderr}")
