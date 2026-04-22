@@ -78,7 +78,7 @@ jobs:
       - name: Build Frontend
         working-directory: assets
         run: |
-          npm ci
+          npm install
           npm run build
         env:
           VITE_API_URL: ${{ steps.cloud_run_url.outputs.url }}
