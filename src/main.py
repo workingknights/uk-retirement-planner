@@ -38,7 +38,7 @@ ALLOWED_ORIGINS = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,15 +86,9 @@ async def list_scenarios(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-        # Ensure email is lowercase for matching
+        # Lowercase email to ensure matching (migration and auth casing can vary)
         search_email = email.lower()
         
-        print(f"DEBUG: Listing scenarios for email: {search_email}")
-        
-        # Check total count in collection for sanity
-        total_docs = db.collection("scenarios").limit(1).get()
-        print(f"DEBUG: Collection exists and has at least one doc: {len(total_docs) > 0}")
-
         docs = (
             db.collection("scenarios")
             .where("user_email", "==", search_email)
@@ -110,14 +104,11 @@ async def list_scenarios(request: Request):
                 "last_modified": d.get("last_modified", 0),
             })
         
-        print(f"DEBUG: Found {len(scenarios)} matching scenarios")
-        
-        # Sort manually in Python
+        # Sort manually in Python to bypass Firestore composite index requirement
         scenarios.sort(key=lambda x: x['last_modified'], reverse=True)
         
         return {"success": True, "data": scenarios}
     except Exception as e:
-        print(f"Firestore error listing scenarios: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
