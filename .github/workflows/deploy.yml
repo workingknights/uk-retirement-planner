@@ -33,20 +33,28 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker
-
       # ── Backend: Build & Deploy to Cloud Run ──
+      - name: Create Artifact Registry Repository
+        run: |
+          gcloud artifacts repositories create $SERVICE \
+            --repository-format=docker \
+            --location=$REGION \
+            --description="Docker repository for $SERVICE" \
+            || true # Ignore error if it already exists
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev
+
       - name: Build Docker image
-        run: docker build -t gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE .
+        run: docker build -t $REGION-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/$SERVICE/$SERVICE .
 
       - name: Push Docker image
-        run: docker push gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE
+        run: docker push $REGION-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/$SERVICE/$SERVICE
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image gcr.io/${{ steps.auth.outputs.project_id }}/$SERVICE \
+            --image $REGION-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/$SERVICE/$SERVICE \
             --region $REGION \
             --platform managed \
             --allow-unauthenticated \
