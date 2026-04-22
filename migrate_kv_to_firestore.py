@@ -1,80 +1,92 @@
 #!/usr/bin/env python3
 """
-One-time migration script: Cloudflare KV → Firestore
+One-time migration script: Cloudflare KV → Firestore (REST API Version)
+
+This version uses the Cloudflare REST API directly, bypassing Wrangler CLI issues.
 
 Usage:
-  1. Export all KV keys from Cloudflare:
-     wrangler kv:key list --namespace-id=3425d31abf8940c8b9d7b9193634960d > kv_keys.json
-
-  2. For each key, download the value:
-     wrangler kv:get <key> --namespace-id=3425d31abf8940c8b9d7b9193634960d > kv_values/<key>.json
-
-  OR use the bulk export approach below.
-
-  3. Run this script:
-     GOOGLE_APPLICATION_CREDENTIALS=path/to/sa-key.json python migrate_kv_to_firestore.py
-
-KV key format: "<user_email>:<scenario_uuid>"
-KV value format: {"id": "...", "name": "...", "data": {...}, "last_modified": 1234567890.0}
+  1. Generate a Cloudflare API Token with "Account.Workers KV Storage: Read" permissions.
+  2. Set the environment variables:
+     export CLOUDFLARE_API_TOKEN="your-token"
+     export GOOGLE_APPLICATION_CREDENTIALS="path/to/sa-key.json"
+  3. Run the script:
+     ./.venv/bin/python migrate_kv_to_firestore.py
 """
 
 import json
 import os
-import subprocess
 import sys
-
+import requests
 from google.cloud import firestore
 
-
-KV_NAMESPACE_ID = "3425d31abf8940c8b9d7b9193634960d"
+# --- CONFIGURATION ---
 ACCOUNT_ID = "037e9c0d842b4bdab78db12c878583d6"
+KV_NAMESPACE_ID = "3425d31abf8940c8b9d7b9193634960d"
 
-
-def export_kv_data():
-    """Export all KV data using wrangler CLI."""
-    print("Listing KV keys...")
-    
-    # Use environment variable for account ID since wrangler kv key commands 
-    # often don't support it as a flag.
-    env = os.environ.copy()
-    if ACCOUNT_ID:
-        env["CLOUDFLARE_ACCOUNT_ID"] = ACCOUNT_ID
-
-    result = subprocess.run(
-        ["npx", "wrangler", "kv", "key", "list", f"--namespace-id={KV_NAMESPACE_ID}", "--preview", "false"],
-        capture_output=True, text=True, cwd=os.path.dirname(__file__),
-        env=env
-    )
-    if result.returncode != 0:
-        print(f"Error listing keys: {result.stderr}")
+def get_cloudflare_data():
+    """Fetch all KV data using the Cloudflare REST API."""
+    token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    if not token:
+        print("Error: CLOUDFLARE_API_TOKEN environment variable not set.")
         sys.exit(1)
 
-    keys = json.loads(result.stdout)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    base_url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/storage/kv/namespaces/{KV_NAMESPACE_ID}"
+    
+    print("Listing KV keys via API...")
+    keys = []
+    cursor = ""
+    
+    while True:
+        url = f"{base_url}/keys"
+        if cursor:
+            url += f"?cursor={cursor}"
+            
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            print(f"Error listing keys: {response.status_code} - {response.text}")
+            sys.exit(1)
+            
+        data = response.json()
+        if not data.get("success"):
+            print(f"API Error: {data.get('errors')}")
+            sys.exit(1)
+            
+        keys.extend(data.get("result", []))
+        
+        # Check for pagination
+        cursor = data.get("result_info", {}).get("cursor")
+        if not cursor:
+            break
+
     print(f"Found {len(keys)} keys")
 
     entries = []
     for key_obj in keys:
         key_name = key_obj["name"]
         print(f"  Fetching: {key_name}")
-        val_result = subprocess.run(
-            ["npx", "wrangler", "kv", "key", "get", f"--namespace-id={KV_NAMESPACE_ID}", "--preview", "false", key_name],
-            capture_output=True, text=True, cwd=os.path.dirname(__file__),
-            env=env
-        )
-        if val_result.returncode != 0:
-            print(f"    SKIP (error): {val_result.stderr}")
+        
+        val_url = f"{base_url}/values/{key_name}"
+        val_response = requests.get(val_url, headers=headers)
+        
+        if val_response.status_code != 200:
+            print(f"    SKIP (error): {val_response.status_code}")
             continue
 
         try:
-            value = json.loads(val_result.stdout)
-        except json.JSONDecodeError:
+            value = val_response.json()
+        except Exception:
             print(f"    SKIP (invalid JSON)")
             continue
 
         # Parse user email from key: "user@email.com:uuid"
         parts = key_name.split(":", 1)
         if len(parts) != 2:
-            print(f"    SKIP (unexpected key format)")
+            print(f"    SKIP (unexpected key format: {key_name})")
             continue
 
         user_email, scenario_uuid = parts
@@ -93,7 +105,10 @@ def migrate_to_firestore(entries):
     batch = db.batch()
 
     for i, entry in enumerate(entries):
+        # The document ID in Firestore is the scenario UUID
         doc_ref = db.collection("scenarios").document(entry["scenario_id"])
+        
+        # Structure matches our new Firestore schema
         doc_data = {
             "user_email": entry["user_email"],
             "name": entry["value"].get("name"),
@@ -114,11 +129,11 @@ def migrate_to_firestore(entries):
 
 
 if __name__ == "__main__":
-    print("=== Cloudflare KV → Firestore Migration ===\n")
+    print("=== Cloudflare KV → Firestore Migration (REST API) ===\n")
 
-    entries = export_kv_data()
+    entries = get_cloudflare_data()
     if not entries:
-        print("No entries to migrate.")
+        print("No entries to migrate. Check your Token permissions and IDs.")
         sys.exit(0)
 
     print(f"\nReady to migrate {len(entries)} scenarios to Firestore.")
@@ -128,4 +143,4 @@ if __name__ == "__main__":
         sys.exit(0)
 
     migrate_to_firestore(entries)
-    print("\nDone! You can now decommission the Cloudflare KV namespace.")
+    print("\nDone!")
