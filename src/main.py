@@ -85,22 +85,31 @@ async def list_scenarios(request: Request):
     if not email:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    docs = (
-        db.collection("scenarios")
-        .where("user_email", "==", email)
-        .order_by("last_modified", direction=firestore.Query.DESCENDING)
-        .stream()
-    )
+    try:
+        # Temporarily removing order_by to avoid missing index errors.
+        # Firestore requires a composite index for where() + order_by().
+        docs = (
+            db.collection("scenarios")
+            .where("user_email", "==", email)
+            .stream()
+        )
 
-    scenarios = []
-    for doc in docs:
-        d = doc.to_dict()
-        scenarios.append({
-            "id": doc.id,
-            "name": d.get("name"),
-            "last_modified": d.get("last_modified", 0),
-        })
-    return {"success": True, "data": scenarios}
+        scenarios = []
+        for doc in docs:
+            d = doc.to_dict()
+            scenarios.append({
+                "id": doc.id,
+                "name": d.get("name"),
+                "last_modified": d.get("last_modified", 0),
+            })
+        
+        # Sort manually in Python for now to bypass index requirement
+        scenarios.sort(key=lambda x: x['last_modified'], reverse=True)
+        
+        return {"success": True, "data": scenarios}
+    except Exception as e:
+        print(f"Firestore error listing scenarios: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @app.post("/api/scenarios")
