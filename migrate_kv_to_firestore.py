@@ -41,7 +41,7 @@ def export_kv_data():
         env["CLOUDFLARE_ACCOUNT_ID"] = ACCOUNT_ID
 
     result = subprocess.run(
-        ["npx", "wrangler", "kv", "key", "list", f"--namespace-id={KV_NAMESPACE_ID}"],
+        ["npx", "wrangler", "kv", "key", "list", f"--namespace-id={KV_NAMESPACE_ID}", "--preview", "false"],
         capture_output=True, text=True, cwd=os.path.dirname(__file__),
         env=env
     )
@@ -57,7 +57,7 @@ def export_kv_data():
         key_name = key_obj["name"]
         print(f"  Fetching: {key_name}")
         val_result = subprocess.run(
-            ["npx", "wrangler", "kv", "key", "get", f"--namespace-id={KV_NAMESPACE_ID}", key_name],
+            ["npx", "wrangler", "kv", "key", "get", f"--namespace-id={KV_NAMESPACE_ID}", "--preview", "false", key_name],
             capture_output=True, text=True, cwd=os.path.dirname(__file__),
             env=env
         )
