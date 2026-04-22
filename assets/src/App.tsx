@@ -8,14 +8,14 @@ import { API_BASE_URL } from './config'
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 
-// Firebase configuration using credentials provided by the user
+// Firebase configuration using environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyAyTSsWkCUCtgW9tcZIOAxUNGgkPp0lVLc",
-  authDomain: "uk-retirement-planner.firebaseapp.com",
-  projectId: "uk-retirement-planner",
-  storageBucket: "uk-retirement-planner.firebasestorage.app",
-  messagingSenderId: "796801394704",
-  appId: "1:796801394704:web:7ed1ff209831ae5900c295"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
