@@ -18,28 +18,6 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Diagnostic logging for deployment verification
-if (import.meta.env.DEV) {
-  console.log("🛠 Firebase Config Debugger (Local Dev):", {
-    hasKey: !!firebaseConfig.apiKey,
-    keySnippet: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 5)}...${firebaseConfig.apiKey.slice(-3)}` : 'MISSING',
-    projectId: firebaseConfig.projectId,
-    authDomain: firebaseConfig.authDomain,
-    env: "Development"
-  });
-} else {
-  // Limited logging for production to help verify build-time injection
-  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain) {
-    console.error("❌ CRITICAL: Firebase Configuration is missing! Ensure GitHub Secrets are set.");
-  } else {
-    console.log("🛠 Firebase Load check:", {
-      projectId: firebaseConfig.projectId,
-      keySnippet: `${firebaseConfig.apiKey.substring(0, 5)}...${firebaseConfig.apiKey.slice(-3)}`,
-      status: "Config detected"
-    });
-  }
-}
-
 // Initialize Firebase
 const firebaseApp = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(firebaseApp);
