@@ -1,8 +1,28 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, LineChart } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle, LogOut } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
+
+// Firebase Imports
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
+
+// Firebase configuration using credentials provided by the user
+const firebaseConfig = {
+  apiKey: "AIzaSyAyTSsWkCUCtgW9tcZIOAxUNGgkPp0lVLc",
+  authDomain: "uk-retirement-planner.firebaseapp.com",
+  projectId: "uk-retirement-planner",
+  storageBucket: "uk-retirement-planner.firebasestorage.app",
+  messagingSenderId: "796801394704",
+  appId: "1:796801394704:web:7ed1ff209831ae5900c295"
+};
+
+// Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const firebaseAuth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+
 
 interface AuthState {
   checked: boolean        // has the /api/me fetch completed?
@@ -135,69 +155,46 @@ function App() {
   // Whether save/load should be available to this user
   const scenariosEnabled = auth.local || auth.authenticated
 
-  // Wrapper for all Worker API calls — sends token explicitly for Cloudflare Access cross-origin auth
+  // Wrapper for all Worker API calls — sends token explicitly for GCP Firebase Auth
   const apiFetch = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('cf_token');
+    const user = firebaseAuth.currentUser;
     const headers = new Headers(options.headers || {});
-    if (token) {
-      headers.set('Cf-Access-Jwt-Assertion', token);
+    if (user) {
+      const token = await user.getIdToken();
+      headers.set('Authorization', `Bearer ${token}`);
     }
-    // Use redirect:'manual' to prevent Safari from following Cloudflare Access login redirects,
-    // which would send Origin:null on the cross-origin redirect and fail CORS.
-    // An opaque redirect (type='opaqueredirect', status=0) means the user needs to authenticate.
-    const res = await fetch(url, { ...options, headers, credentials: 'include', redirect: 'manual' });
-    if (res.type === 'opaqueredirect' || res.status === 0) {
-      throw new Error('auth-redirect');
-    }
-    return res;
-  }
-
-  const fetchAuth = async () => {
-    try {
-      const res = await apiFetch(`${API_BASE_URL}/api/me`)
-      const data = await res.json()
-      setAuth({ checked: true, authenticated: !!data.authenticated, email: data.email ?? null, local: !!data.local })
-    } catch {
-      setAuth({ checked: true, authenticated: false, email: null, local: false })
-    }
-  }
-
-  const fetchScenarios = async () => {
-    try {
-      const res = await apiFetch(`${API_BASE_URL}/api/scenarios`)
-      const data = await res.json()
-      if (data.success) setScenarios(data.data)
-    } catch (e) { console.error('Failed to fetch scenarios', e) }
+    // Use standard fetch without redirect hacks, as Firebase Auth bypasses the cross-origin login redirects.
+    return fetch(url, { ...options, headers });
   }
 
   useEffect(() => {
-    // Extract token from URL hash if returning from login redirect
-    const hash = window.location.hash;
-    const search = window.location.search;
-    
-    // The token might be in the hash or search depending on whether `to` already had a query string
-    let token = null;
-    
-    if (hash.includes('token=')) {
-      const params = new URLSearchParams(hash.replace('#', '?'));
-      token = params.get('token');
-      if (token) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    } else if (search.includes('token=')) {
-      const params = new URLSearchParams(search);
-      token = params.get('token');
-      if (token) {
-        params.delete('token');
-        const newSearch = params.toString() ? '?' + params.toString() : '';
-        window.history.replaceState(null, '', window.location.pathname + newSearch + window.location.hash);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      if (user) {
+        setAuth({ checked: true, authenticated: true, email: user.email, local: false });
+      } else {
+        setAuth({ checked: true, authenticated: false, email: null, local: false });
       }
-    }
+    });
 
-    if (token) {
-      localStorage.setItem('cf_token', token);
-    }
-
-    fetchAuth()
+    return () => unsubscribe();
   }, [])
+
+  const handleSignIn = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      await signInWithPopup(firebaseAuth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(firebaseAuth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
 
   useEffect(() => {
     if (scenariosEnabled) fetchScenarios()
@@ -450,10 +447,18 @@ function App() {
     setWhatIfs(prev => prev.filter(s => s.id !== id))
   }
 
-  // Login URL: Cloudflare Access intercepts requests to workers.dev/api/login.
-  // After the user authenticates, our worker extracts the JWT and redirects to
-  // pages.dev/?token=<jwt> so the frontend can store it in localStorage.
-  const loginUrl = `${API_BASE_URL}/api/login`
+  const fetchScenarios = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/scenarios`)
+      const data = await res.json()
+      if (data.success) setScenarios(data.data)
+    } catch (e) { console.error('Failed to fetch scenarios', e) }
+  }
+
+  useEffect(() => {
+    if (scenariosEnabled) fetchScenarios()
+  }, [scenariosEnabled])
+
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
@@ -462,13 +467,13 @@ function App() {
       {auth.checked && !auth.local && !auth.authenticated && (
         <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-sm text-amber-800">
           <span>Sign in to save and load scenarios across sessions.</span>
-          <a
-            href={loginUrl}
+          <button
+            onClick={handleSignIn}
             className="flex items-center space-x-1.5 font-semibold text-amber-900 hover:text-amber-700 transition-colors"
           >
             <LogIn size={16} />
             <span>Sign In</span>
-          </a>
+          </button>
         </div>
       )}
 
@@ -491,9 +496,18 @@ function App() {
         <div className="flex items-center space-x-3">
           {/* User badge — shown when authenticated */}
           {auth.authenticated && auth.email && (
-            <div className="flex items-center space-x-1.5 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">
-              <UserCircle size={16} className="text-indigo-500" />
-              <span className="hidden sm:inline max-w-[160px] truncate">{auth.email}</span>
+            <div className="flex items-center space-x-3 text-sm">
+              <div className="flex items-center space-x-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">
+                <UserCircle size={16} className="text-indigo-500" />
+                <span className="hidden sm:inline max-w-[160px] truncate">{auth.email}</span>
+              </div>
+              <button 
+                onClick={handleSignOut}
+                title="Sign Out"
+                className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+              >
+                <LogOut size={20} />
+              </button>
             </div>
           )}
 

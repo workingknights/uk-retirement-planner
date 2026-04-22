@@ -1,116 +1,50 @@
 """
-Cloudflare Access JWT authentication.
+Firebase Authentication helper for Cloud Run.
 
-When CF_ACCESS_AUD and CF_TEAM_NAME are present (i.e. deployed on Cloudflare),
-every request to protected routes must carry a valid Cf-Access-Jwt-Assertion
-header issued by your Access application.
-
-When those vars are absent (local development), get_current_user returns None
-and scenario routes are disabled gracefully (KV isn't available locally anyway).
+Verifies Firebase ID tokens (from Firebase Auth SDK on the frontend)
+and extracts the user's email for scenario namespacing.
 """
 
-import json
-import time
+from functools import lru_cache
 from typing import Optional
 
-from fastapi import HTTPException, Request
-
-# Deferred until runtime to avoid Cloudflare Pyodide snapshot serialization errors.
-_JWT_AVAILABLE = True  # We assume it is available and let it throw dynamically if not.
-
-# ---------------------------------------------------------------------------
-# In-process JWKS cache: { "keys": [...], "fetched_at": float }
-# ---------------------------------------------------------------------------
-_jwks_cache: dict = {}
-_JWKS_TTL_SECONDS = 3600  # re-fetch public keys every hour
+import firebase_admin
+from firebase_admin import auth as firebase_auth, credentials
 
 
-async def _fetch_jwks(team_name: str) -> list:
-    """Fetch Cloudflare Access public keys (JWKS), with a simple TTL cache."""
-    now = time.time()
-    if _jwks_cache.get("fetched_at", 0) + _JWKS_TTL_SECONDS > now and _jwks_cache.get("keys"):
-        return _jwks_cache["keys"]
-
-    url = f"https://{team_name}.cloudflareaccess.com/cdn-cgi/access/certs"
-
-    # In a Cloudflare Worker we use the js `fetch` global.
-    # Fall back to urllib for local / test runs.
-    try:
-        from js import fetch as js_fetch  # type: ignore[import]
-        response = await js_fetch(url)
-        text = await response.text()
-        jwks = json.loads(text)
-    except ImportError:
-        import urllib.request
-        with urllib.request.urlopen(url) as resp:  # noqa: S310
-            jwks = json.loads(resp.read())
-
-    keys = jwks.get("keys", [])
-    _jwks_cache["keys"] = keys
-    _jwks_cache["fetched_at"] = now
-    return keys
+@lru_cache(maxsize=1)
+def _init_firebase():
+    """Initialise Firebase Admin SDK (once). Uses Application Default Credentials on Cloud Run."""
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app()
 
 
-def _get_token_from_request(request: Request) -> Optional[str]:
-    """Extract the JWT from the Cf-Access-Jwt-Assertion header or CF_Authorization cookie."""
-    token = request.headers.get("Cf-Access-Jwt-Assertion")
-    if token:
-        return token
-    cookie = request.cookies.get("CF_Authorization")
-    return cookie or None
-
-
-async def get_current_user(request: Request) -> Optional[dict]:
+def verify_token(authorization: Optional[str]) -> Optional[dict]:
     """
-    FastAPI dependency.
+    Verify a Firebase ID token from the Authorization header.
+
+    Args:
+        authorization: The full 'Authorization' header value (e.g. 'Bearer eyJ...')
 
     Returns:
-        dict  — decoded JWT payload (includes 'email' and 'sub') when authenticated.
-        None  — when running locally (CF_ACCESS_AUD not configured).
-
-    Raises:
-        HTTPException(401) — token missing or invalid in a deployed environment.
+        dict with user info (uid, email, etc.) if valid.
+        None if missing or invalid.
     """
-    # Retrieve env from scope (passed by asgi.fetch)
-    env = request.scope.get("env") or getattr(request.state, "env", {}) or {}
-    aud = env.get("CF_ACCESS_AUD") if isinstance(env, dict) else getattr(env, "CF_ACCESS_AUD", None)
-    team = env.get("CF_TEAM_NAME") if isinstance(env, dict) else getattr(env, "CF_TEAM_NAME", None)
-
-    # Local development — auth not configured
-    if not aud or not team:
+    if not authorization or not authorization.startswith("Bearer "):
         return None
 
-    if not _JWT_AVAILABLE:
-        raise HTTPException(status_code=500, detail="PyJWT not available — check dependencies.")
-
-    token = _get_token_from_request(request)
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing Cloudflare Access token.")
+    token = authorization[7:]  # Strip 'Bearer '
 
     try:
-        import jwt
-        
-        # In Cloudflare Python Workers, the 'cryptography' C-extension isn't loading properly,
-        # which breaks RSAAlgorithm. Since Cloudflare Access sits IN FRONT of this worker
-        # and strictly enforces JWT validity and expiration before the request ever reaches us, 
-        # it is acceptable to decode the token payload directly to get the user identity.
-        payload = jwt.decode(
-            token,
-            audience=aud,
-            options={"verify_signature": False, "verify_exp": False}
-        )
-        return payload
-
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Auth error: {exc}") from exc
-
-
-def get_user_id(user: Optional[dict]) -> Optional[str]:
-    """Return a stable, safe user identifier from the JWT payload (email preferred)."""
-    if user is None:
+        _init_firebase()
+        decoded = firebase_auth.verify_id_token(token)
+        return decoded
+    except Exception:
         return None
-    # Use email as the namespace key; fall back to sub
-    return user.get("email") or user.get("sub")
+
+
+def get_user_email(decoded_token: Optional[dict]) -> Optional[str]:
+    """Extract user email from a decoded Firebase token. Used as scenario namespace key."""
+    if not decoded_token:
+        return None
+    return decoded_token.get("email") or decoded_token.get("uid")
