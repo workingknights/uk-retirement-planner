@@ -86,11 +86,18 @@ async def list_scenarios(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-        # Temporarily removing order_by to avoid missing index errors.
-        # Firestore requires a composite index for where() + order_by().
+        # Ensure email is lowercase for matching
+        search_email = email.lower()
+        
+        print(f"DEBUG: Listing scenarios for email: {search_email}")
+        
+        # Check total count in collection for sanity
+        total_docs = db.collection("scenarios").limit(1).get()
+        print(f"DEBUG: Collection exists and has at least one doc: {len(total_docs) > 0}")
+
         docs = (
             db.collection("scenarios")
-            .where("user_email", "==", email)
+            .where("user_email", "==", search_email)
             .stream()
         )
 
@@ -103,7 +110,9 @@ async def list_scenarios(request: Request):
                 "last_modified": d.get("last_modified", 0),
             })
         
-        # Sort manually in Python for now to bypass index requirement
+        print(f"DEBUG: Found {len(scenarios)} matching scenarios")
+        
+        # Sort manually in Python
         scenarios.sort(key=lambda x: x['last_modified'], reverse=True)
         
         return {"success": True, "data": scenarios}
