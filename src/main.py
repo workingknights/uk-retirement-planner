@@ -11,8 +11,6 @@ Routes:
 """
 
 import json
-import time
-import uuid
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -165,94 +163,7 @@ async def delete_plan(plan_id: str, request: Request):
     return {"success": True}
 
 
-@app.get("/api/scenarios")
-async def list_scenarios(request: Request):
-    email = _get_user(request)
-    if not email:
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    try:
-        # Lowercase email to ensure matching (migration and auth casing can vary)
-        search_email = email.lower()
-        
-        docs = (
-            db.collection("scenarios")
-            .where("user_email", "==", search_email)
-            .stream()
-        )
-
-        scenarios = []
-        for doc in docs:
-            d = doc.to_dict()
-            scenarios.append({
-                "id": doc.id,
-                "name": d.get("name"),
-                "last_modified": d.get("last_modified", 0),
-            })
-        
-        # Sort manually in Python to bypass Firestore composite index requirement
-        scenarios.sort(key=lambda x: x['last_modified'], reverse=True)
-        
-        return {"success": True, "data": scenarios}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
-
-
-@app.post("/api/scenarios")
-async def save_scenario(request: Request):
-    email = _get_user(request)
-    if not email:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    body = await request.json()
-    scenario_id = str(uuid.uuid4())
-    doc = {
-        "user_email": email,
-        "name": body.get("name"),
-        "data": body.get("data"),
-        "last_modified": time.time(),
-    }
-    db.collection("scenarios").document(scenario_id).set(doc)
-    return {"success": True, "data": {"id": scenario_id}}
-
-
-@app.get("/api/scenarios/{scenario_id}")
-async def load_scenario(scenario_id: str, request: Request):
-    email = _get_user(request)
-    if not email:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    doc_ref = db.collection("scenarios").document(scenario_id)
-    doc = doc_ref.get()
-
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-
-    data = doc.to_dict()
-    if data.get("user_email") != email:
-        raise HTTPException(status_code=403, detail="Not your scenario")
-
-    return {"success": True, "data": data}
-
-
-@app.delete("/api/scenarios/{scenario_id}")
-async def delete_scenario(scenario_id: str, request: Request):
-    email = _get_user(request)
-    if not email:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    doc_ref = db.collection("scenarios").document(scenario_id)
-    doc = doc_ref.get()
-
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-
-    data = doc.to_dict()
-    if data.get("user_email") != email:
-        raise HTTPException(status_code=403, detail="Not your scenario")
-
-    doc_ref.delete()
-    return {"success": True}
 
 
 @app.get("/health")

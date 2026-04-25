@@ -1,6 +1,6 @@
 import random
 from typing import List, Dict, Any, Optional
-from models import SimulationRequest, Asset, IncomeSource, Person, BlendedStrategyParams, Plan, UserProfile, Scenario, MonteCarloParams
+from models import SimulationRequest, Asset, IncomeSource, Person, BlendedStrategyParams, Plan, UserProfile, MonteCarloParams
 # ─────────────────────────────────────────────
 # UK Tax Helpers (2024/25 tax year rates)
 # ─────────────────────────────────────────────

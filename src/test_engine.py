@@ -1,4 +1,4 @@
-from models import SimulationRequest, Asset, IncomeSource, Person, Plan, UserProfile, Goal, Scenario
+from models import SimulationRequest, Asset, IncomeSource, Person, Plan, UserProfile, PlanEvent
 from engine import run_simulation
 from math import isclose
 
