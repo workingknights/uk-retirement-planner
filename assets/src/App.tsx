@@ -314,12 +314,35 @@ function App() {
     setShowSaveModal(true)
   }
 
+  const normalizePlan = (rawPlan: any): Plan => {
+    const p = { ...defaultPlan, ...rawPlan }
+    
+    // Migrate legacy 'goals' to 'events'
+    if (rawPlan.goals && (!rawPlan.events || rawPlan.events.length === 0)) {
+      p.events = rawPlan.goals.map((g: any) => ({
+        ...g,
+        event_type: 'custom'
+      }))
+    } else {
+      p.events = rawPlan.events || []
+    }
+
+    // Ensure asset_allocation exists for all assets
+    p.assets = (rawPlan.assets || []).map((a: any) => ({
+      ...a,
+      asset_allocation: a.asset_allocation || { equities: 0.0, bonds: 0.0, cash: 0.0 }
+    }))
+
+    return p
+  }
+
   const handleLoadPlan = async (id: string) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/plans/${id}`)
       const data = await res.json()
       if (data.success) {
-        setPlan(data.data.data)
+        const loadedPlan = normalizePlan(data.data.data)
+        setPlan(loadedPlan)
         setCurrentPlanName(data.data.name)
         setShowLoadModal(false)
       }
@@ -540,7 +563,7 @@ function App() {
       {/* Auth banner — shown in prod when not yet authenticated */}
       {auth.checked && !auth.local && !auth.authenticated && (
         <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-sm text-amber-800">
-          <span>Sign in to save and load scenarios across sessions.</span>
+          <span>Sign in to save and load plans across sessions.</span>
           <button
             onClick={handleSignIn}
             className="flex items-center space-x-1.5 font-semibold text-amber-900 hover:text-amber-700 transition-colors"
