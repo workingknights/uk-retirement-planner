@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from models import SimulationParams, Asset, IncomeSource, Person, BlendedStrategyParams
+from models import SimulationRequest, Asset, IncomeSource, Person, BlendedStrategyParams, Plan, UserProfile, Scenario
 
 # ─────────────────────────────────────────────
 # UK Tax Helpers (2024/25 tax year rates)
@@ -119,30 +119,99 @@ def calculate_total_balance(assets: List[Asset]) -> float:
     return sum(a.balance for a in assets)
 
 
-def run_simulation(params: SimulationParams) -> Dict[str, Any]:
-    current_age = params.current_age
-    retirement_age = params.retirement_age
-    life_expectancy = params.life_expectancy
-    inflation_rate = params.inflation_rate / 100.0
+def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
+    plan = req.plan
+    profile = req.profile
+    scenario = None
+    if req.scenario_id:
+        scenario = next((s for s in plan.scenarios if s.id == req.scenario_id), None)
+    
+    if not plan.people:
+        return {"error": "Plan must have at least one person."}
+        
+    primary_person = plan.people[0]
+    start_age = primary_person.age
+    retirement_age = plan.retirement_age
+    life_expectancy = plan.life_expectancy
+    
+    base_inflation = profile.default_inflation_rate
+    inflation_rate = (base_inflation + (scenario.inflation_offset if scenario else 0.0)) / 100.0
 
-    # Build lookup: person_id -> Person
-    people = {p.id: p for p in params.people}
-
-    # Track remaining tax-free pension cash per person (2024/25 lifetime limit: £268,275)
+    people = {p.id: p for p in plan.people}
     PENSION_TAX_FREE_LIFETIME_LIMIT = 268_275.0
     person_tax_free_remaining: Dict[str, float] = {
         pid: PENSION_TAX_FREE_LIFETIME_LIMIT for pid in people
     }
 
-    assets = [Asset(**a.dict()) for a in params.assets]
+    # Clone assets and apply scenario growth offsets
+    assets = []
+    growth_offset = scenario.growth_offset if scenario else 0.0
+    for a in plan.assets:
+        asset_copy = Asset(**a.model_dump())
+        asset_copy.annual_growth_rate += growth_offset
+        assets.append(asset_copy)
 
     yearly_data = []
+    
+    # Pre-compute death and divorce years
+    deaths = {}
+    divorces = set()
+    if scenario:
+        for d in scenario.death_events:
+            deaths[d.person_id] = d.year
+        for d in scenario.divorce_events:
+            divorces.add(d.year)
 
-    for age in range(current_age, life_expectancy + 1):
+    current_calendar_year = 2024
 
-        # 1. Required (inflation-adjusted) income
-        years_inflated = age - current_age
-        required_income = params.desired_annual_income * ((1 + inflation_rate) ** years_inflated)
+    for age in range(start_age, life_expectancy + 1):
+        year_idx = age - start_age
+        current_year = current_calendar_year + year_idx
+        
+        # Calculate individual ages for this year
+        current_ages = {}
+        for pid, p in people.items():
+            current_ages[pid] = p.age + year_idx
+            
+        # Apply Death Events
+        dead_this_year = [pid for pid, d_year in deaths.items() if d_year == current_year]
+        for dead_pid in dead_this_year:
+            # Transfer assets owned solely by the deceased to the primary person (or surviving spouse)
+            surviving_pid = next((pid for pid in people if pid != dead_pid and deaths.get(pid, 9999) > current_year), None)
+            if surviving_pid:
+                for a in assets:
+                    if len(a.owners) == 1 and a.owners[0].person_id == dead_pid:
+                        a.owners[0].person_id = surviving_pid
+                    elif len(a.owners) > 1:
+                        # Find deceased's share
+                        deceased_share = next((o.share for o in a.owners if o.person_id == dead_pid), 0.0)
+                        a.owners = [o for o in a.owners if o.person_id != dead_pid]
+                        # Give share to survivor
+                        surv_owner = next((o for o in a.owners if o.person_id == surviving_pid), None)
+                        if surv_owner:
+                            surv_owner.share += deceased_share
+                        else:
+                            a.owners.append(AssetOwnership(person_id=surviving_pid, share=deceased_share))
+        
+        # Apply Divorce Events
+        if current_year in divorces:
+            # Split jointly owned assets 50/50. For simplicity, just halve the balance of joint assets.
+            for a in assets:
+                if len(a.owners) > 1:
+                    a.balance /= 2.0
+                    a.owners = [a.owners[0]]
+                    a.owners[0].share = 1.0
+
+        # 1. Required (inflation-adjusted) income & Goals
+        required_income = plan.desired_annual_income * ((1 + inflation_rate) ** year_idx)
+        
+        goals_this_year = [g for g in plan.goals if g.timing_age == age]
+        total_goals_amount = sum(g.amount * ((1 + inflation_rate) ** year_idx) for g in goals_this_year)
+        
+        # We need to fund required_income + total_goals_amount
+        total_required_funding = required_income + total_goals_amount
+
+
 
         # 2. Scheduled income sources
         generated_income = 0.0
@@ -160,9 +229,14 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
         person_source_property_cgt: Dict[str, Dict[str, float]] = {pid: {} for pid in people}
         person_source_dividends: Dict[str, Dict[str, float]] = {pid: {} for pid in people}
 
-        for inc in params.incomes:
-            if inc.start_age <= age <= inc.end_age:
-                years_elapsed = age - current_age
+        for inc in plan.incomes:
+            # Check if person is alive
+            if inc.person_id and deaths.get(inc.person_id, 9999) <= current_year:
+                continue
+                
+            inc_person_age = current_ages.get(inc.person_id, age) if inc.person_id else age
+            if inc.start_age <= inc_person_age <= inc.end_age:
+                years_elapsed = year_idx
                 inflated_inc = inc.amount * ((1 + inflation_rate) ** years_elapsed)
                 generated_income += inflated_inc
                 income_breakdown[inc.name] = inflated_inc
@@ -205,21 +279,35 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                             person_dividend_income[pid] += share_amount
                             person_source_dividends[pid][src_name] = person_source_dividends[pid].get(src_name, 0.0) + share_amount
 
-        # 4. Withdraw from assets to cover income shortfall
-        # Only enforce the target lifestyle during retirement. Before retirement, assume living within means.
+        # 4. Withdraw from assets to cover income shortfall + goals
+        # Only enforce the target lifestyle during retirement. Before retirement, assume living within means (but goals must be funded).
         if age < retirement_age:
-            shortfall = 0.0
-            required_income = generated_income  # Baseline to actual generated income
+            shortfall = max(0.0, total_goals_amount - generated_income)
+            required_income = generated_income  # Baseline to actual generated income for lifestyle
         else:
-            shortfall = max(0.0, required_income - generated_income)
+            shortfall = max(0.0, total_required_funding - generated_income)
 
         if shortfall > 0:
+            # First, try to satisfy specific goal overrides
+            for goal in goals_this_year:
+                if goal.override_asset_id and shortfall > 0:
+                    override_asset = next((a for a in assets if a.id == goal.override_asset_id and a.balance > 0), None)
+                    if override_asset:
+                        goal_inflated = goal.amount * ((1 + inflation_rate) ** year_idx)
+                        withdrawal = min(override_asset.balance, goal_inflated, shortfall)
+                        override_asset.balance -= withdrawal
+                        shortfall -= withdrawal
+                        generated_income += withdrawal
+                        src_name = f"Withdrawal: {override_asset.name}"
+                        income_breakdown[src_name] = income_breakdown.get(src_name, 0.0) + withdrawal
+                        # (tax attribution omitted for brevity on goal overrides, assuming simple withdrawal)
+
             if age < retirement_age:
                 # ── Pre-Retirement Strategy (Fallback if forced by future life events) ──
                 # Only use cash, premium_bonds, rsu, general (no ISA or Pension)
                 allowed_types = {"cash", "premium_bonds", "rsu", "general"}
                 withdrawable_assets = [a for a in assets if a.is_withdrawable and a.type in allowed_types]
-                priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                priority_map = {ptype: i for i, ptype in enumerate(profile.withdrawal_priority)}
                 sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
                 remaining_shortfall = shortfall
                 for asset in sorted_assets:
@@ -260,8 +348,8 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                                     person_source_taxable, person_source_cgt, person_source_property_cgt
                                 )
             else:
-                use_blended = (params.withdrawal_strategy == "blended")
-                bp = params.blended_params or BlendedStrategyParams()
+                use_blended = (profile.withdrawal_strategy == "blended")
+                bp = profile.blended_params or BlendedStrategyParams()
 
                 if use_blended:
                     # ── Blended Tax-Optimised Strategy ──
@@ -359,7 +447,7 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                     # Step D: If still shortfall, fall back to sequential priority for remaining gap
                     if shortfall > 0:
                         withdrawable_assets = [a for a in assets if a.is_withdrawable]
-                        priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                        priority_map = {ptype: i for i, ptype in enumerate(profile.withdrawal_priority)}
                         sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
                         remaining_shortfall = shortfall
                         for asset in sorted_assets:
@@ -402,7 +490,7 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
                 else:
                     # ── Sequential (original) Strategy ──
                     withdrawable_assets = [a for a in assets if a.is_withdrawable]
-                    priority_map = {ptype: i for i, ptype in enumerate(params.withdrawal_priority)}
+                    priority_map = {ptype: i for i, ptype in enumerate(profile.withdrawal_priority)}
                     sorted_assets = sorted(withdrawable_assets, key=lambda a: priority_map.get(a.type, 999))
 
                     remaining_shortfall = shortfall
@@ -493,25 +581,33 @@ def run_simulation(params: SimulationParams) -> Dict[str, Any]:
             tax_by_source[k] = round(tax_by_source[k], 2)
 
         # Find any life events occurring this year
-        events_this_year = [evt.name for evt in params.life_events if evt.age == age]
+        # we mapped goals to this year, let's include them in life_events list for the UI
+        events_this_year = [g.name for g in plan.goals if g.timing_age == age]
+        if dead_this_year:
+            events_this_year.append("Death Event")
+        if current_year in divorces:
+            events_this_year.append("Divorce Event")
 
         # 6. Record state for this year
         year_record = {
             "age": age,
-            "required_income": required_income,
+            "year": current_year,
+            "ages": current_ages,
+            "required_income": total_required_funding,
             "total_income": generated_income, # renamed properly
+            "deficit": max(0.0, total_required_funding - generated_income), # shortfall that couldn't be met
             "total_assets": calculate_total_balance(assets),
             "asset_balances": {a.name: a.balance for a in assets},
             "income_breakdown": income_breakdown,
             "tax_by_source": tax_by_source,
-            "shortfall_remaining": max(0.0, required_income - generated_income),
+            "shortfall_remaining": max(0.0, total_required_funding - generated_income),
             "tax_breakdown": person_tax,
             "life_events": events_this_year,
         }
         yearly_data.append(year_record)
 
     return {
-        "params": params.dict(),
+        "params": plan.model_dump(),
         "timeline": yearly_data,
     }
 

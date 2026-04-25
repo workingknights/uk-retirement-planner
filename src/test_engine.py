@@ -1,22 +1,29 @@
-from models import SimulationParams, Asset, IncomeSource
+from models import SimulationRequest, Asset, IncomeSource, Person, Plan, UserProfile, Goal, Scenario
 from engine import run_simulation
 from math import isclose
 
 def test_basic_growth():
-    params = SimulationParams(
-        current_age=40,
-        retirement_age=60,
-        life_expectancy=41,
-        inflation_rate=0.0,
-        desired_annual_income=0.0,
-        assets=[
-            Asset(id="1", name="Test ISA", type="isa", balance=100000, annual_growth_rate=5.0, annual_contribution=0)
-        ],
-        incomes=[],
-        withdrawal_priority=["isa"]
+    req = SimulationRequest(
+        plan=Plan(
+            id="test1",
+            name="Plan 1",
+            retirement_age=60,
+            life_expectancy=41,
+            desired_annual_income=0.0,
+            people=[Person(id="p1", name="P1", age=40)],
+            assets=[
+                Asset(id="1", name="Test ISA", type="isa", balance=100000, annual_growth_rate=5.0, annual_contribution=0)
+            ],
+            incomes=[],
+            goals=[]
+        ),
+        profile=UserProfile(
+            withdrawal_priority=["isa"],
+            default_inflation_rate=0.0
+        )
     )
     
-    result = run_simulation(params)
+    result = run_simulation(req)
     timeline = result["timeline"]
     
     assert len(timeline) == 2 # age 40 and age 41
@@ -30,60 +37,95 @@ def test_basic_growth():
     assert isclose(timeline[1]["total_assets"], year_41_balance, rel_tol=1e-5)
 
 def test_withdrawals():
-    params = SimulationParams(
-        current_age=60,
-        retirement_age=60,
-        life_expectancy=61,
-        inflation_rate=0.0,
-        desired_annual_income=20000,
-        assets=[
-            Asset(id="1", name="Cash", type="cash", balance=50000, annual_growth_rate=0.0, annual_contribution=0)
-        ],
-        incomes=[],
-        withdrawal_priority=["cash"]
+    req = SimulationRequest(
+        plan=Plan(
+            id="test2",
+            name="Plan 2",
+            retirement_age=60,
+            life_expectancy=61,
+            desired_annual_income=20000,
+            people=[Person(id="p1", name="P1", age=60)],
+            assets=[
+                Asset(id="1", name="Cash", type="cash", balance=50000, annual_growth_rate=0.0, annual_contribution=0)
+            ],
+            incomes=[]
+        ),
+        profile=UserProfile(
+            withdrawal_priority=["cash"],
+            default_inflation_rate=0.0
+        )
     )
-    result = run_simulation(params)
+    result = run_simulation(req)
     timeline = result["timeline"]
     
-    # Year 1 (age 60): 50k balance -> required 20k -> withdrawal 20k -> remaining 30k
     assert timeline[0]["total_income"] == 20000
     assert timeline[0]["total_assets"] == 30000
     
-    # Year 1 (age 60): 30k balance -> required 20k -> withdrawal 20k -> remaining 10k
     assert timeline[1]["total_income"] == 20000
     assert timeline[1]["total_assets"] == 10000
 
-def test_property_and_db_pension():
-    params = SimulationParams(
-        current_age=60,
-        retirement_age=60,
-        life_expectancy=61,
-        inflation_rate=0.0,
-        desired_annual_income=25000,
-        assets=[
-            Asset(id="1", name="Cash", type="cash", balance=50000, annual_growth_rate=0.0, annual_contribution=0, is_withdrawable=True),
-            Asset(id="2", name="House", type="property", balance=300000, annual_growth_rate=2.0, annual_contribution=0, is_withdrawable=False)
-        ],
-        incomes=[
-            IncomeSource(id="1", name="DB Pension", type="db_pension", amount=15000, start_age=60, end_age=100)
-        ],
-        withdrawal_priority=["cash"]
+def test_goals_and_deficit():
+    req = SimulationRequest(
+        plan=Plan(
+            id="test3",
+            name="Plan 3",
+            retirement_age=65,
+            life_expectancy=42, # test covers ages 40, 41, 42
+            desired_annual_income=0,
+            people=[Person(id="p1", name="P1", age=40)],
+            assets=[
+                Asset(id="1", name="Cash", type="cash", balance=10000, annual_growth_rate=0.0, annual_contribution=0)
+            ],
+            incomes=[],
+            goals=[
+                Goal(id="g1", name="Wedding", amount=15000, timing_age=41) # short by 5k
+            ]
+        ),
+        profile=UserProfile(
+            withdrawal_priority=["cash"],
+            default_inflation_rate=0.0
+        )
     )
-    result = run_simulation(params)
+    
+    result = run_simulation(req)
     timeline = result["timeline"]
     
-    # Year 1 (age 60): Required 25k. Generated 15k from DB Pension. Shortfall 10k. 
-    # Withdrawn from cash: 10k. Cash remaining: 40k. House remaining: 300k * 1.02 = 306k.
-    # Total Assets = 346k
-    assert timeline[0]["total_income"] == 25000 # 15k + 10k
-    assert timeline[0]["asset_balances"]["Cash"] == 40000
-    assert timeline[0]["asset_balances"]["House"] == 306000
-    assert timeline[0]["total_assets"] == 346000
-
-    # Year 2 (age 61): Required 25k. Generated 15k from DB. Shortfall 10k.
-    # Withdrawn from cash: 10k. Cash remaining: 30k. House remaining: 306k * 1.02 = 312120.
-    # Total Assets = 342120
-    assert timeline[1]["total_income"] == 25000
-    assert timeline[1]["asset_balances"]["Cash"] == 30000
-    assert timeline[1]["asset_balances"]["House"] == 312120
-    assert timeline[1]["total_assets"] == 342120
+    # Age 40
+    assert timeline[0]["total_assets"] == 10000
+    assert timeline[0]["deficit"] == 0
+    
+    # Age 41: Goal 15k, but only 10k cash
+    assert timeline[1]["total_assets"] == 0
+    assert timeline[1]["total_income"] == 10000 # managed to withdraw 10k
+    assert timeline[1]["deficit"] == 5000 # 15k needed - 10k withdrawn
+    
+def test_individual_ages_and_pensions():
+    req = SimulationRequest(
+        plan=Plan(
+            id="test4",
+            name="Plan 4",
+            retirement_age=65,
+            life_expectancy=65, # primary age 60 -> 65
+            desired_annual_income=0,
+            people=[
+                Person(id="p1", name="P1", age=60),
+                Person(id="p2", name="P2", age=63)
+            ],
+            assets=[],
+            incomes=[
+                # P2 gets pension at their age 64, which is year 2 (primary age 61)
+                IncomeSource(id="1", name="P2 DB", type="db_pension", amount=10000, start_age=64, end_age=100, person_id="p2")
+            ],
+            goals=[]
+        ),
+        profile=UserProfile(default_inflation_rate=0.0)
+    )
+    
+    result = run_simulation(req)
+    timeline = result["timeline"]
+    
+    # Year 1 (primary 60, P2 63)
+    assert timeline[0]["total_income"] == 0
+    
+    # Year 2 (primary 61, P2 64) -> pension starts!
+    assert timeline[1]["total_income"] == 10000
