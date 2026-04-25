@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ReferenceLine, LineChart } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle, LogOut, Settings } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle, LogOut, Settings, LayoutGrid, Table } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
 
@@ -180,6 +180,7 @@ function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [topRowExpanded, setTopRowExpanded] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [activeTab, setActiveTab] = useState<'charts' | 'table'>('charts')
 
   const [auth, setAuth] = useState<AuthState>({ checked: false, authenticated: false, email: null, local: true })
 
@@ -597,6 +598,23 @@ function App() {
             </h1>
             <p className="text-slate-500 mt-1 hidden sm:block">Plan your future with confidence and clarity.</p>
           </div>
+
+          <div className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl ml-8 border border-slate-200">
+            <button
+              onClick={() => setActiveTab('charts')}
+              className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'charts' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <LayoutGrid size={16} />
+              <span>Charts</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('table')}
+              className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Table size={16} />
+              <span>Breakdown</span>
+            </button>
+          </div>
         </div>
         <div className="flex items-center space-x-3">
           {/* User badge — shown when authenticated */}
@@ -735,17 +753,320 @@ function App() {
         {sidebarVisible && (
           <div className="space-y-6 lg:col-span-1 pr-4 lg:border-r border-slate-200">
 
-            <section className="space-y-4">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setAssetsExpanded(!assetsExpanded)}>
+            <section className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setGoalsExpanded(!goalsExpanded)}>
                 <div className="flex items-center space-x-2">
-                  {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Assets ({plan.assets.length})</h2>
+                  {goalsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">Goals ({plan.goals.length})</h2>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
+                <button onClick={(e) => { e.stopPropagation(); handleAddGoal(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
                   <Plus size={20} />
                 </button>
               </div>
-              {assetsExpanded && plan.assets.map(asset => (
+              {goalsExpanded && plan.goals.map(goal => (
+                <div key={goal.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
+                  <button onClick={() => handleRemoveGoal(goal.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={goal.name} onChange={e => handleUpdateGoal(goal.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Goal Name" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Amount (£)
+                      <input type="number" value={goal.amount} onChange={e => handleUpdateGoal(goal.id, 'amount', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Timing (Age)
+                      <input type="number" value={goal.timing_age} onChange={e => handleUpdateGoal(goal.id, 'timing_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            <section className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setWhatIfsExpanded(!whatIfsExpanded)}>
+                <div className="flex items-center space-x-2">
+                  {whatIfsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                  <h2 className="text-xl font-semibold text-slate-800">Scenarios ({plan.scenarios.length})</h2>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleAddScenario(); }} disabled={plan.scenarios.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors p-1">
+                  <Plus size={20} />
+                </button>
+              </div>
+              {whatIfsExpanded && plan.scenarios.length === 0 && (
+                <p className="text-sm text-slate-500 italic px-2">Add a scenario to compare against the base plan.</p>
+              )}
+              {whatIfsExpanded && plan.scenarios.map(scenario => (
+                <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
+                  <button onClick={() => handleRemoveScenario(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={16} />
+                  </button>
+                  <input value={scenario.name} onChange={e => handleUpdateScenario(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-slate-500">
+                      Inflation Offset (%)
+                      <input type="number" step="0.1" value={scenario.inflation_offset} onChange={e => handleUpdateScenario(scenario.id, 'inflation_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Asset Growth Offset (%)
+                      <input type="number" step="0.1" value={scenario.growth_offset} onChange={e => handleUpdateScenario(scenario.id, 'growth_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+        <div className={`${sidebarVisible ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-8`}>
+          {!simulationData ? (
+            <div className="bg-slate-100 rounded-2xl h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
+              <TrendingUp size={48} className="mb-4 text-slate-400" />
+              <p>Configure parameters and run simulation to see projection</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'charts' && (
+                <div className="space-y-8">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-6">Asset Balances Over Time</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={simulationData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                          <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Legend />
+                          {plan.assets.map((asset, index) => {
+                            const color = getAssetColor(index);
+                            return (
+                              <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
+                            )
+                          })}
+                          {plan.goals.map(evt => (
+                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                            </ReferenceLine>
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-6">Income & Withdrawals</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={simulationData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                          <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Legend />
+
+                          {/* Dynamically map income components from all simulation years */}
+                          {(() => {
+                            if (!simulationData) return null;
+                            const keys = new Set<string>();
+                            simulationData.forEach((year: any) => {
+                              Object.keys(year.income_breakdown).forEach(k => keys.add(k));
+                            });
+                            return Array.from(keys).map((incomeKey) => {
+                              const color = getIncomeColor(incomeKey);
+                              return (
+                                <Bar key={incomeKey} dataKey={`income_breakdown.${incomeKey}`} name={incomeKey} stackId="1" fill={color} />
+                              )
+                            });
+                          })()}
+
+                          <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
+
+                          <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Required Income" dot={false} />
+                          {plan.goals.map(evt => (
+                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                            </ReferenceLine>
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {plan.people.length > 0 && (() => {
+                    const taxData = simulationData.map((year: any) => {
+                      const row: any = { age: year.age }
+                      plan.people.forEach(p => {
+                        row[`tax_${p.name}`] = year.tax_breakdown?.[p.name]?.total ?? 0
+                      })
+                      return row
+                    })
+                    return (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-2">Estimated Tax Liability</h3>
+                        <p className="text-xs text-slate-500 mb-4">Income Tax + CGT per person (2024/25 rates, simplified).</p>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={taxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                              <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                              <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Legend />
+                              {plan.people.map((p, idx) => {
+                                const hue = (idx * 80 + 200) % 360
+                                const color = `hsl(${hue}, 65%, 45%)`
+                                return (
+                                  <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
+                                )
+                              })}
+                              {plan.goals.map(evt => (
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                                </ReferenceLine>
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Combined Scenarios Chart */}
+                  {plan.scenarios.length > 0 && Object.keys(whatIfData).length > 0 && (() => {
+                    // Build combined data array
+                    const combinedData = simulationData.map((baseYear: any, index: number) => {
+                      const row: any = { age: baseYear.age, Base: baseYear.total_assets }
+                      plan.scenarios.forEach(scenario => {
+                        const scenarioTimeline = whatIfData[scenario.id]
+                        if (scenarioTimeline && scenarioTimeline[index]) {
+                          row[scenario.name] = scenarioTimeline[index].total_assets
+                        }
+                      })
+                      return row
+                    })
+
+                    const scenarioColors = ['#10b981', '#f59e0b', '#ec4899'] // Emerald, Amber, Pink
+
+                    return (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-2">Scenario Comparison (Total Assets)</h3>
+                        <p className="text-xs text-slate-500 mb-4">Comparing the baseline projection with your what-if scenarios.</p>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={combinedData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                              <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                              <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} width={80} />
+                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Legend />
+                              <Line type="monotone" dataKey="Base" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                              {plan.scenarios.map((scenario, idx) => (
+                                <Line key={scenario.id} type="monotone" dataKey={scenario.name} stroke={scenarioColors[idx % scenarioColors.length]} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                              ))}
+                              {plan.goals.map(evt => (
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                                </ReferenceLine>
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+
+              {activeTab === 'table' && (
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Annual Breakdown</h3>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="min-w-full text-sm text-left text-slate-600">
+                      <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">Age</th>
+                          {(() => {
+                            const tableData = simulationData.filter((year: any) => year.age >= plan.retirement_age - 1);
+                            const allIncomeKeys = new Set<string>();
+                            tableData.forEach((year: any) => {
+                              Object.keys(year.income_breakdown).forEach(k => allIncomeKeys.add(k));
+                            });
+                            const incomeColumns = Array.from(allIncomeKeys);
+                            return incomeColumns.map(col => (
+                              <React.Fragment key={col}>
+                                <th className="px-4 py-3 font-semibold text-slate-700 bg-slate-100/50">{col} (Income)</th>
+                                <th className="px-4 py-3 font-semibold text-rose-700/80 bg-rose-50/30">{col} (Tax)</th>
+                              </React.Fragment>
+                            ))
+                          })()}
+                          <th className="px-4 py-3 font-semibold text-indigo-700 bg-indigo-50 border-x border-slate-200">Total Income</th>
+                          {plan.people.map(p => (
+                            <th key={p.id} className="px-4 py-3 font-semibold">{p.name} Tax</th>
+                          ))}
+                          <th className="px-4 py-3 font-semibold text-rose-700 bg-rose-50 border-l border-slate-200">Total Tax</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simulationData.filter((year: any) => year.age >= plan.retirement_age - 1).map((year: any) => {
+                          const tableData = simulationData.filter((year: any) => year.age >= plan.retirement_age - 1);
+                          const allIncomeKeys = new Set<string>();
+                          tableData.forEach((year: any) => {
+                            Object.keys(year.income_breakdown).forEach(k => allIncomeKeys.add(k));
+                          });
+                          const incomeColumns = Array.from(allIncomeKeys);
+                          const totalTax = plan.people.reduce((sum, p) => sum + (year.tax_breakdown?.[p.name]?.total ?? 0), 0);
+                          return (
+                            <tr key={year.age} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-2 font-medium text-slate-900">{year.age}</td>
+                              {incomeColumns.map(col => (
+                                <React.Fragment key={col}>
+                                  <td className="px-4 py-2 font-medium text-slate-700 bg-slate-50/50">
+                                    £{Number(year.income_breakdown[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  </td>
+                                  <td className="px-4 py-2 text-rose-600/80 bg-rose-50/30">
+                                    £{Number(year.tax_by_source?.[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  </td>
+                                </React.Fragment>
+                              ))}
+                              <td className="px-4 py-2 font-semibold text-indigo-700 bg-indigo-50/50 border-x border-slate-200">
+                                £{Number(year.total_income || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </td>
+                              {plan.people.map(p => (
+                                <td key={p.id} className="px-4 py-2">
+                                  £{Number(year.tax_breakdown?.[p.name]?.total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </td>
+                              ))}
+                              <td className="px-4 py-2 font-semibold text-rose-700 bg-rose-50/50 border-l border-slate-200">
+                                £{Number(totalTax || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Data Entry Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-8 border-t border-slate-200">
+        <section className="space-y-4">
+          <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setAssetsExpanded(!assetsExpanded)}>
+            <div className="flex items-center space-x-2">
+              {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+              <h2 className="text-2xl font-bold text-slate-800">Assets ({plan.assets.length})</h2>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded-lg">
+              <Plus size={24} />
+            </button>
+          </div>
+          {assetsExpanded && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {plan.assets.map(asset => (
                 <div key={asset.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
                   <button onClick={() => handleRemoveAsset(asset.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Trash2 size={16} />
@@ -837,19 +1158,23 @@ function App() {
                   </div>
                 </div>
               ))}
-            </section>
+            </div>
+          )}
+        </section>
 
-            <section className="space-y-4 pt-6 border-t border-slate-200">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setIncomesExpanded(!incomesExpanded)}>
-                <div className="flex items-center space-x-2">
-                  {incomesExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Income Sources ({plan.incomes.length})</h2>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddIncome(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
-                  <Plus size={20} />
-                </button>
-              </div>
-              {incomesExpanded && plan.incomes.map(income => (
+        <section className="space-y-4">
+          <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setIncomesExpanded(!incomesExpanded)}>
+            <div className="flex items-center space-x-2">
+              {incomesExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+              <h2 className="text-2xl font-bold text-slate-800">Income Sources ({plan.incomes.length})</h2>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); handleAddIncome(); }} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded-lg">
+              <Plus size={24} />
+            </button>
+          </div>
+          {incomesExpanded && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {plan.incomes.map(income => (
                 <div key={income.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
                   <button onClick={() => handleRemoveIncome(income.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Trash2 size={16} />
@@ -893,302 +1218,9 @@ function App() {
                   </div>
                 </div>
               ))}
-            </section>
-
-            <section className="space-y-4 pt-6 border-t border-slate-200">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setGoalsExpanded(!goalsExpanded)}>
-                <div className="flex items-center space-x-2">
-                  {goalsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Goals ({plan.goals.length})</h2>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddGoal(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
-                  <Plus size={20} />
-                </button>
-              </div>
-              {goalsExpanded && plan.goals.map(goal => (
-                <div key={goal.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
-                  <button onClick={() => handleRemoveGoal(goal.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 size={16} />
-                  </button>
-                  <input value={goal.name} onChange={e => handleUpdateGoal(goal.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Goal Name" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block text-xs text-slate-500">
-                      Amount (£)
-                      <input type="number" value={goal.amount} onChange={e => handleUpdateGoal(goal.id, 'amount', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                    <label className="block text-xs text-slate-500">
-                      Timing (Age)
-                      <input type="number" value={goal.timing_age} onChange={e => handleUpdateGoal(goal.id, 'timing_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            <section className="space-y-4 pt-6 border-t border-slate-200">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setWhatIfsExpanded(!whatIfsExpanded)}>
-                <div className="flex items-center space-x-2">
-                  {whatIfsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Scenarios ({plan.scenarios.length})</h2>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddScenario(); }} disabled={plan.scenarios.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors p-1">
-                  <Plus size={20} />
-                </button>
-              </div>
-              {whatIfsExpanded && plan.scenarios.length === 0 && (
-                <p className="text-sm text-slate-500 italic px-2">Add a scenario to compare against the base plan.</p>
-              )}
-              {whatIfsExpanded && plan.scenarios.map(scenario => (
-                <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
-                  <button onClick={() => handleRemoveScenario(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 size={16} />
-                  </button>
-                  <input value={scenario.name} onChange={e => handleUpdateScenario(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block text-xs text-slate-500">
-                      Inflation Offset (%)
-                      <input type="number" step="0.1" value={scenario.inflation_offset} onChange={e => handleUpdateScenario(scenario.id, 'inflation_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                    <label className="block text-xs text-slate-500">
-                      Asset Growth Offset (%)
-                      <input type="number" step="0.1" value={scenario.growth_offset} onChange={e => handleUpdateScenario(scenario.id, 'growth_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-
-        <div className={`${sidebarVisible ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-8`}>
-          {!simulationData ? (
-            <div className="bg-slate-100 rounded-2xl h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
-              <TrendingUp size={48} className="mb-4 text-slate-400" />
-              <p>Configure parameters and run simulation to see projection</p>
             </div>
-          ) : (
-            <>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-semibold text-slate-800 mb-6">Asset Balances Over Time</h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={simulationData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                      <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                      <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                      <Legend />
-                      {plan.assets.map((asset, index) => {
-                        const color = getAssetColor(index);
-                        return (
-                          <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
-                        )
-                      })}
-                      {plan.goals.map(evt => (
-                        <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                          <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
-                        </ReferenceLine>
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-semibold text-slate-800 mb-6">Income & Withdrawals</h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={simulationData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                      <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                      <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                      <Legend />
-
-                      {/* Dynamically map income components from all simulation years */}
-                      {(() => {
-                        if (!simulationData) return null;
-                        const keys = new Set<string>();
-                        simulationData.forEach((year: any) => {
-                          Object.keys(year.income_breakdown).forEach(k => keys.add(k));
-                        });
-                        return Array.from(keys).map((incomeKey) => {
-                          const color = getIncomeColor(incomeKey);
-                          return (
-                            <Bar key={incomeKey} dataKey={`income_breakdown.${incomeKey}`} name={incomeKey} stackId="1" fill={color} />
-                          )
-                        });
-                      })()}
-
-                      <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
-
-                      <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Required Income" dot={false} />
-                      {plan.goals.map(evt => (
-                        <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                          <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
-                        </ReferenceLine>
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {plan.people.length > 0 && (() => {
-                const taxData = simulationData.map((year: any) => {
-                  const row: any = { age: year.age }
-                  plan.people.forEach(p => {
-                    row[`tax_${p.name}`] = year.tax_breakdown?.[p.name]?.total ?? 0
-                  })
-                  return row
-                })
-                return (
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">Estimated Tax Liability</h3>
-                    <p className="text-xs text-slate-500 mb-4">Income Tax + CGT per person (2024/25 rates, simplified).</p>
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={taxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                          <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                          <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                          <Legend />
-                          {plan.people.map((p, idx) => {
-                            const hue = (idx * 80 + 200) % 360
-                            const color = `hsl(${hue}, 65%, 45%)`
-                            return (
-                              <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
-                            )
-                          })}
-                          {plan.goals.map(evt => (
-                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
-                            </ReferenceLine>
-                          ))}
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* Combined Scenarios Chart */}
-              {plan.scenarios.length > 0 && Object.keys(whatIfData).length > 0 && (() => {
-                // Build combined data array
-                const combinedData = simulationData.map((baseYear: any, index: number) => {
-                  const row: any = { age: baseYear.age, Base: baseYear.total_assets }
-                  plan.scenarios.forEach(scenario => {
-                    const scenarioTimeline = whatIfData[scenario.id]
-                    if (scenarioTimeline && scenarioTimeline[index]) {
-                      row[scenario.name] = scenarioTimeline[index].total_assets
-                    }
-                  })
-                  return row
-                })
-
-                const scenarioColors = ['#10b981', '#f59e0b', '#ec4899'] // Emerald, Amber, Pink
-
-                return (
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">Scenario Comparison (Total Assets)</h3>
-                    <p className="text-xs text-slate-500 mb-4">Comparing the baseline projection with your what-if scenarios.</p>
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={combinedData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                          <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} width={80} />
-                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                          <Legend />
-                          <Line type="monotone" dataKey="Base" stroke="#3b82f6" strokeWidth={3} dot={false} />
-                          {plan.scenarios.map((scenario, idx) => (
-                            <Line key={scenario.id} type="monotone" dataKey={scenario.name} stroke={scenarioColors[idx % scenarioColors.length]} strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                          ))}
-                          {plan.goals.map(evt => (
-                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
-                            </ReferenceLine>
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )
-              })()}
-            </>
           )}
-
-          {/* Tabular View */}
-          {simulationData && plan.people.length > 0 && (() => {
-            // Filter data to only show from 1 year prior to retirement
-            const tableData = simulationData.filter((year: any) => year.age >= plan.retirement_age - 1);
-            
-            // Collect possible income sources across the visible years for columns
-            const allIncomeKeys = new Set<string>();
-            tableData.forEach((year: any) => {
-              Object.keys(year.income_breakdown).forEach(k => allIncomeKeys.add(k));
-            });
-            const incomeColumns = Array.from(allIncomeKeys);
-
-            return (
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-8">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Annual Breakdown</h3>
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="min-w-full text-sm text-left text-slate-600">
-                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">Age</th>
-                        {incomeColumns.map(col => (
-                          <React.Fragment key={col}>
-                            <th className="px-4 py-3 font-semibold text-slate-700 bg-slate-100/50">{col} (Income)</th>
-                            <th className="px-4 py-3 font-semibold text-rose-700/80 bg-rose-50/30">{col} (Tax)</th>
-                          </React.Fragment>
-                        ))}
-                        <th className="px-4 py-3 font-semibold text-indigo-700 bg-indigo-50 border-x border-slate-200">Total Income</th>
-                        {plan.people.map(p => (
-                          <th key={p.id} className="px-4 py-3 font-semibold">{p.name} Tax</th>
-                        ))}
-                        <th className="px-4 py-3 font-semibold text-rose-700 bg-rose-50 border-l border-slate-200">Total Tax</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableData.map((year: any) => {
-                        const totalTax = plan.people.reduce((sum, p) => sum + (year.tax_breakdown?.[p.name]?.total ?? 0), 0);
-                        return (
-                          <tr key={year.age} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-2 font-medium text-slate-900">{year.age}</td>
-                            {incomeColumns.map(col => (
-                              <React.Fragment key={col}>
-                                <td className="px-4 py-2 font-medium text-slate-700 bg-slate-50/50">
-                                  £{Number(year.income_breakdown[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="px-4 py-2 text-rose-600/80 bg-rose-50/30">
-                                  £{Number(year.tax_by_source?.[col] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </td>
-                              </React.Fragment>
-                            ))}
-                            <td className="px-4 py-2 font-semibold text-indigo-700 bg-indigo-50/50 border-x border-slate-200">
-                              £{Number(year.total_income || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                            </td>
-                            {plan.people.map(p => (
-                              <td key={p.id} className="px-4 py-2">
-                                £{Number(year.tax_breakdown?.[p.name]?.total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                              </td>
-                            ))}
-                            <td className="px-4 py-2 font-semibold text-rose-700 bg-rose-50/50 border-l border-slate-200">
-                              £{Number(totalTax || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )
-          })()}
-
-        </div>
+        </section>
       </div>
 
       {/* Save Modal */}
