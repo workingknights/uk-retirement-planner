@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ReferenceLine, LineChart } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, Download, X, ChevronDown, ChevronUp, PanelLeftClose, PanelLeftOpen, LogIn, UserCircle, LogOut, Settings, LayoutGrid, Table } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, FolderOpen, X, ChevronDown, ChevronUp, LogIn, UserCircle, LogOut, Settings, LayoutGrid, Table } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
 
@@ -54,7 +54,7 @@ interface AssetOwnership {
 }
 
 interface PlanEvent {
-  id: str
+  id: string
   name: string
   amount: number
   timing_age: number
@@ -186,16 +186,14 @@ function App() {
 
   const [auth, setAuth] = useState<AuthState>({ checked: false, authenticated: false, email: null, local: true })
 
-  const [plans, setPlans] = useState<{ id: string, name: string, last_modified?: number, scenarios?: string[] }[]>([])
-  const [legacyScenarios, setLegacyScenarios] = useState<{ id: string, name: string }[]>([])
+  const [plans, setPlans] = useState<{ id: string, name: string, last_modified?: number }[]>([])
   const [showLoadModal, setShowLoadModal] = useState(false)
-  const [showImportModal, setShowImportModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [currentPlanName, setCurrentPlanName] = useState('')
 
   // Whether save/load should be available to this user
-  const scenariosEnabled = auth.local || auth.authenticated
+  const authEnabled = auth.local || auth.authenticated
 
   // Wrapper for all Worker API calls — sends token explicitly for GCP Firebase Auth
   const apiFetch = async (url: string, options: RequestInit = {}) => {
@@ -246,14 +244,6 @@ function App() {
     } catch (e) { console.error('Failed to fetch plans', e) }
   }
 
-  const fetchLegacyScenarios = async () => {
-    try {
-      const res = await apiFetch(`${API_BASE_URL}/api/scenarios`)
-      const data = await res.json()
-      if (data.success) setLegacyScenarios(data.data)
-    } catch (e) { console.error('Failed to fetch legacy scenarios', e) }
-  }
-
   const fetchProfile = async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/profile`)
@@ -265,12 +255,11 @@ function App() {
   }
 
   useEffect(() => {
-    if (scenariosEnabled) {
+    if (authEnabled) {
       fetchPlans()
       fetchProfile()
-      fetchLegacyScenarios()
     }
-  }, [scenariosEnabled])
+  }, [authEnabled])
 
   const [confirmOverwrite, setConfirmOverwrite] = useState(false)
 
@@ -330,11 +319,9 @@ function App() {
       const res = await apiFetch(`${API_BASE_URL}/api/plans/${id}`)
       const data = await res.json()
       if (data.success) {
-        const loadedPlan = { ...defaultPlan, ...data.data.data }
-        setPlan(loadedPlan)
+        setPlan(data.data.data)
         setCurrentPlanName(data.data.name)
         setShowLoadModal(false)
-        setSimulationData(null)
       }
     } catch (e) { console.error('Failed to load plan', e) }
   }
@@ -344,28 +331,6 @@ function App() {
       await apiFetch(`${API_BASE_URL}/api/plans/${id}`, { method: 'DELETE' })
       fetchPlans()
     } catch (e) { console.error('Failed to delete plan', e) }
-  }
-
-  const handleImportLegacyScenario = async (id: string) => {
-    try {
-      const res = await apiFetch(`${API_BASE_URL}/api/scenarios/${id}`)
-      const data = await res.json()
-      if (data.success) {
-        const oldParams = data.data.data
-        // Convert old flat params to new Plan structure roughly
-        const importedPlan: Plan = {
-          ...defaultPlan,
-          desired_annual_income: oldParams.desired_annual_income || 40000,
-          retirement_age: oldParams.retirement_age || 60,
-          people: oldParams.people?.map((p: any) => ({ ...p, age: oldParams.current_age || 40 })) || defaultPlan.people,
-          assets: oldParams.assets || [],
-          incomes: oldParams.incomes || [],
-          scenarios: []
-        }
-        setPlan(importedPlan)
-        setShowImportModal(false)
-      }
-    } catch (e) { console.error('Failed to import legacy scenario', e) }
   }
 
   const handleSimulate = async () => {
@@ -588,13 +553,6 @@ function App() {
 
       <header className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setSidebarVisible(!sidebarVisible)}
-            title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
-            className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shadow-sm transition-all"
-          >
-            {sidebarVisible ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
-          </button>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               UK Retirement Planner
@@ -638,31 +596,22 @@ function App() {
           )}
 
           <button
-            onClick={() => scenariosEnabled ? setShowImportModal(true) : undefined}
-            disabled={!scenariosEnabled}
-            title={!scenariosEnabled ? 'Sign in to import scenarios' : 'Import legacy scenario'}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => authEnabled ? setShowLoadModal(true) : undefined}
+            disabled={!authEnabled}
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
+            title={!authEnabled ? 'Sign in to load plans' : 'Load a saved plan'}
           >
-            <Download size={18} />
-            <span className="hidden sm:inline">Import</span>
+            <FolderOpen size={20} />
+            <span>Load</span>
           </button>
           <button
-            onClick={() => scenariosEnabled ? setShowLoadModal(true) : undefined}
-            disabled={!scenariosEnabled}
-            title={!scenariosEnabled ? 'Sign in to load plans' : 'Load a saved plan'}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={authEnabled ? handleOpenSaveModal : undefined}
+            disabled={!authEnabled}
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
+            title={!authEnabled ? 'Sign in to save plans' : 'Save current plan'}
           >
-            <Download size={18} />
-            <span className="hidden sm:inline">Load Plan</span>
-          </button>
-          <button
-            onClick={scenariosEnabled ? handleOpenSaveModal : undefined}
-            disabled={!scenariosEnabled}
-            title={!scenariosEnabled ? 'Sign in to save plans' : 'Save current plan'}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Save size={18} />
-            <span>Save Plan</span>
+            <Save size={20} />
+            <span>Save</span>
           </button>
           <button
             onClick={() => setShowProfileModal(true)}
@@ -1228,34 +1177,6 @@ function App() {
                     <button onClick={() => handleDeletePlan(s.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2">
                       <Trash2 size={18} />
                     </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Legacy Modal */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Import Legacy Scenario</h3>
-              <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-            </div>
-            <p className="text-sm text-slate-600 mb-4">
-              Legacy scenarios use the old data model. Importing will convert it into a base Plan.
-            </p>
-            <div className="flex-1 overflow-y-auto space-y-2 min-h-[100px]">
-              {legacyScenarios.length === 0 ? (
-                <p className="text-slate-500 text-center py-8">No legacy scenarios found.</p>
-              ) : (
-                legacyScenarios.map(s => (
-                  <div key={s.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 group">
-                    <div className="flex-1 cursor-pointer" onClick={() => handleImportLegacyScenario(s.id)}>
-                      <div className="font-medium text-slate-700">{s.name}</div>
-                    </div>
                   </div>
                 ))
               )}

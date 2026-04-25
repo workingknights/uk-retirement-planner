@@ -11,6 +11,8 @@ Routes:
 """
 
 import json
+import time
+import uuid
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -111,8 +113,7 @@ async def list_plans(request: Request):
             plans.append({
                 "id": doc.id,
                 "name": d.get("name"),
-                "last_modified": d.get("last_modified", 0),
-                "scenarios": [s.get("name") for s in d.get("data", {}).get("scenarios", [])]
+                "last_modified": d.get("last_modified", 0)
             })
         plans.sort(key=lambda x: x['last_modified'], reverse=True)
         return {"success": True, "data": plans}
