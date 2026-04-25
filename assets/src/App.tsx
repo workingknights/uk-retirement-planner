@@ -1036,6 +1036,48 @@ function App() {
                         />
                       </label>
                     )}
+                    <div className="col-span-2 border-t border-slate-100 pt-3 mt-1">
+                      <p className="text-xs font-semibold text-slate-600 mb-2">Asset Allocation (Monte Carlo %)</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="block text-[10px] text-slate-500">
+                          Equities
+                          <input 
+                            type="number" min="0" max="100" 
+                            value={Math.round(asset.asset_allocation.equities * 100)} 
+                            onChange={e => {
+                              const val = Number(e.target.value) / 100;
+                              handleUpdateAsset(asset.id, 'asset_allocation', { ...asset.asset_allocation, equities: val });
+                            }} 
+                            className="mt-0.5 block w-full rounded border-slate-300 p-1 border text-xs" 
+                          />
+                        </label>
+                        <label className="block text-[10px] text-slate-500">
+                          Bonds
+                          <input 
+                            type="number" min="0" max="100" 
+                            value={Math.round(asset.asset_allocation.bonds * 100)} 
+                            onChange={e => {
+                              const val = Number(e.target.value) / 100;
+                              handleUpdateAsset(asset.id, 'asset_allocation', { ...asset.asset_allocation, bonds: val });
+                            }} 
+                            className="mt-0.5 block w-full rounded border-slate-300 p-1 border text-xs" 
+                          />
+                        </label>
+                        <label className="block text-[10px] text-slate-500">
+                          Cash
+                          <input 
+                            type="number" min="0" max="100" 
+                            value={Math.round(asset.asset_allocation.cash * 100)} 
+                            onChange={e => {
+                              const val = Number(e.target.value) / 100;
+                              handleUpdateAsset(asset.id, 'asset_allocation', { ...asset.asset_allocation, cash: val });
+                            }} 
+                            className="mt-0.5 block w-full rounded border-slate-300 p-1 border text-xs" 
+                          />
+                        </label>
+                      </div>
+                    </div>
+
                     {plan.people.length > 0 && (
                       <div className="col-span-2 mt-1 space-y-1">
                         <p className="text-xs font-medium text-slate-500">Ownership</p>
