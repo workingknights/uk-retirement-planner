@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict
 
 AssetType = Literal["isa", "pension", "general", "cash", "property", "rsu", "premium_bonds"]
 IncomeSourceType = Literal["state_pension", "db_pension", "employment", "other"]
@@ -26,6 +26,11 @@ class LifeEvent(BaseModel):
     name: str
     age: int
 
+class AssetAllocation(BaseModel):
+    equities: float = 0.0
+    bonds: float = 0.0
+    cash: float = 0.0
+
 class Asset(BaseModel):
     id: str
     name: str
@@ -37,6 +42,8 @@ class Asset(BaseModel):
     max_annual_withdrawal: float | None = None  # Optional cap, e.g. £15,000 for RSU CGT reasons
     owners: List[AssetOwnership] = []  # empty = unassigned/whole household
     dividend_yield: float | None = None  # Annual dividend yield % (GIA only)
+    asset_allocation: AssetAllocation = AssetAllocation(equities=0.6, bonds=0.4, cash=0.0)
+
 
 class IncomeSource(BaseModel):
     id: str
@@ -91,7 +98,21 @@ class Plan(BaseModel):
     goals: List[Goal] = []
     scenarios: List[Scenario] = []
 
+class MonteCarloParams(BaseModel):
+    num_trials: int = 100
+    expected_return_equities: float = 7.0
+    std_dev_equities: float = 15.0
+    expected_return_bonds: float = 3.0
+    std_dev_bonds: float = 5.0
+    expected_return_cash: float = 1.5
+    std_dev_cash: float = 1.0
+    inflation_mean: float = 2.5
+    inflation_std_dev: float = 1.5
+
 class SimulationRequest(BaseModel):
     plan: Plan
     profile: UserProfile
     scenario_id: Optional[str] = None
+    run_monte_carlo: bool = False
+    monte_carlo_params: Optional[MonteCarloParams] = None
+

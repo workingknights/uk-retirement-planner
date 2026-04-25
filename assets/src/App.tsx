@@ -62,6 +62,12 @@ interface Goal {
   override_asset_id: string | null
 }
 
+interface AssetAllocation {
+  equities: number
+  bonds: number
+  cash: number
+}
+
 interface Asset {
   id: string
   name: string
@@ -73,6 +79,7 @@ interface Asset {
   max_annual_withdrawal: number | null
   owners: AssetOwnership[]
   dividend_yield: number | null
+  asset_allocation: AssetAllocation
 }
 
 interface IncomeSource {
@@ -126,10 +133,24 @@ interface UserProfile {
   default_stock_growth: number
 }
 
+interface MonteCarloParams {
+  num_trials: number
+  expected_return_equities: number
+  std_dev_equities: number
+  expected_return_bonds: number
+  std_dev_bonds: number
+  expected_return_cash: number
+  std_dev_cash: number
+  inflation_mean: number
+  inflation_std_dev: number
+}
+
 interface SimulationRequest {
   plan: Plan
   profile: UserProfile
   scenario_id: string | null
+  run_monte_carlo?: boolean
+  monte_carlo_params?: MonteCarloParams
 }
 
 const defaultPlan: Plan = {
@@ -142,9 +163,9 @@ const defaultPlan: Plan = {
     { id: 'p1', name: 'Primary Person', age: 40 }
   ],
   assets: [
-    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null },
-    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null },
-    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null }
+    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.8, bonds: 0.2, cash: 0.0 } },
+    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.6, bonds: 0.4, cash: 0.0 } },
+    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.0, bonds: 0.0, cash: 0.0 } }
   ],
   incomes: [
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
@@ -171,6 +192,7 @@ function App() {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile)
 
   const [simulationData, setSimulationData] = useState<any>(null)
+  const [mcData, setMcData] = useState<any>(null)
   const [whatIfData, setWhatIfData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(false)
   const [assetsExpanded, setAssetsExpanded] = useState(false)
@@ -414,6 +436,43 @@ function App() {
     }
   }
 
+  const handleMonteCarlo = async () => {
+    setLoading(true)
+    try {
+      const req: SimulationRequest = { 
+        plan, 
+        profile, 
+        scenario_id: null,
+        run_monte_carlo: true,
+        monte_carlo_params: {
+          num_trials: 100,
+          expected_return_equities: 7.0,
+          std_dev_equities: 15.0,
+          expected_return_bonds: 3.0,
+          std_dev_bonds: 5.0,
+          expected_return_cash: 1.5,
+          std_dev_cash: 1.0,
+          inflation_mean: 2.5,
+          inflation_std_dev: 1.5
+        }
+      }
+      
+      const response = await apiFetch(`${API_BASE_URL}/api/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req)
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMcData(data.data)
+      }
+    } catch (error) {
+      console.error('Failed to run monte carlo', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Consistent color generation based on index for assets and incomes
   const getAssetColor = (index: number) => {
     const hue = (index * 137.5) % 360;
@@ -454,6 +513,7 @@ function App() {
       max_annual_withdrawal: null,
       owners: [],
       dividend_yield: null,
+      asset_allocation: { equities: 0.6, bonds: 0.4, cash: 0.0 }
     }
     setPlan(prev => ({ ...prev, assets: [...prev.assets, newAsset] }))
   }
@@ -668,6 +728,14 @@ function App() {
             <span>Settings</span>
           </button>
           <button
+            onClick={handleMonteCarlo}
+            disabled={loading}
+            className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
+          >
+            <TrendingUp size={20} />
+            <span>{loading ? 'Running...' : 'Run Monte Carlo'}</span>
+          </button>
+          <button
             onClick={handleSimulate}
             disabled={loading}
             className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200 transition-all disabled:opacity-50"
@@ -827,6 +895,32 @@ function App() {
             <>
               {activeTab === 'charts' && (
                 <div className="space-y-8">
+                  {mcData && (
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-lg font-semibold text-slate-800">Monte Carlo Projection (100 Trials)</h3>
+                        <div className="flex items-center space-x-2 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg">
+                          <span className="font-bold text-lg">{mcData.success_rate}%</span>
+                          <span className="text-sm">Success Rate</span>
+                        </div>
+                      </div>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={mcData.percentiles}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Legend />
+                            <Line type="monotone" dataKey="p90" name="90th Percentile" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                            <Line type="monotone" dataKey="p50" name="Median Outcome" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                            <Line type="monotone" dataKey="p10" name="10th Percentile" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h3 className="text-lg font-semibold text-slate-800 mb-6">Asset Balances Over Time</h3>
                     <div className="h-80">

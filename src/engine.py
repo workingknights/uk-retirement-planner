@@ -1,6 +1,6 @@
+import random
 from typing import List, Dict, Any, Optional
-from models import SimulationRequest, Asset, IncomeSource, Person, BlendedStrategyParams, Plan, UserProfile, Scenario
-
+from models import SimulationRequest, Asset, IncomeSource, Person, BlendedStrategyParams, Plan, UserProfile, Scenario, MonteCarloParams
 # ─────────────────────────────────────────────
 # UK Tax Helpers (2024/25 tax year rates)
 # ─────────────────────────────────────────────
@@ -119,7 +119,7 @@ def calculate_total_balance(assets: List[Asset]) -> float:
     return sum(a.balance for a in assets)
 
 
-def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
+def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str, float]]] = None) -> Dict[str, Any]:
     plan = req.plan
     profile = req.profile
     scenario = None
@@ -135,7 +135,6 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
     life_expectancy = plan.life_expectancy
     
     base_inflation = profile.default_inflation_rate
-    inflation_rate = (base_inflation + (scenario.inflation_offset if scenario else 0.0)) / 100.0
 
     people = {p.id: p for p in plan.people}
     PENSION_TAX_FREE_LIFETIME_LIMIT = 268_275.0
@@ -148,7 +147,6 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
     growth_offset = scenario.growth_offset if scenario else 0.0
     for a in plan.assets:
         asset_copy = Asset(**a.model_dump())
-        asset_copy.annual_growth_rate += growth_offset
         assets.append(asset_copy)
 
     yearly_data = []
@@ -163,6 +161,8 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
             divorces.add(d.year)
 
     current_calendar_year = 2024
+    cumulative_inflation_factor = 1.0
+    prev_inflation_rate = 0.0
 
     for age in range(start_age, life_expectancy + 1):
         year_idx = age - start_age
@@ -172,6 +172,18 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
         current_ages = {}
         for pid, p in people.items():
             current_ages[pid] = p.age + year_idx
+            
+        if mc_overrides and year_idx < len(mc_overrides):
+            year_inflation = mc_overrides[year_idx].get("inflation", base_inflation)
+        else:
+            year_inflation = base_inflation
+            
+        current_inflation_rate = (year_inflation + (scenario.inflation_offset if scenario else 0.0)) / 100.0
+        
+        if year_idx > 0:
+            cumulative_inflation_factor *= (1 + prev_inflation_rate)
+        prev_inflation_rate = current_inflation_rate
+
             
         # Apply Death Events
         dead_this_year = [pid for pid, d_year in deaths.items() if d_year == current_year]
@@ -203,10 +215,10 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
                     a.owners[0].share = 1.0
 
         # 1. Required (inflation-adjusted) income & Goals
-        required_income = plan.desired_annual_income * ((1 + inflation_rate) ** year_idx)
+        required_income = plan.desired_annual_income * cumulative_inflation_factor
         
         goals_this_year = [g for g in plan.goals if g.timing_age == age]
-        total_goals_amount = sum(g.amount * ((1 + inflation_rate) ** year_idx) for g in goals_this_year)
+        total_goals_amount = sum(g.amount * cumulative_inflation_factor for g in goals_this_year)
         
         # We need to fund required_income + total_goals_amount
         total_required_funding = required_income + total_goals_amount
@@ -236,8 +248,7 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
                 
             inc_person_age = current_ages.get(inc.person_id, age) if inc.person_id else age
             if inc.start_age <= inc_person_age <= inc.end_age:
-                years_elapsed = year_idx
-                inflated_inc = inc.amount * ((1 + inflation_rate) ** years_elapsed)
+                inflated_inc = inc.amount * cumulative_inflation_factor
                 generated_income += inflated_inc
                 income_breakdown[inc.name] = inflated_inc
 
@@ -251,7 +262,13 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
 
         # 3. Apply growth and contributions to assets
         for asset in assets:
-            growth = asset.balance * (asset.annual_growth_rate / 100.0)
+            if mc_overrides and year_idx < len(mc_overrides):
+                base_growth = mc_overrides[year_idx].get(asset.id, asset.annual_growth_rate)
+            else:
+                base_growth = asset.annual_growth_rate
+                
+            growth_rate = base_growth + growth_offset
+            growth = asset.balance * (growth_rate / 100.0)
             asset.balance += growth
             if age < retirement_age:
                 asset.balance += asset.annual_contribution
@@ -293,7 +310,7 @@ def run_simulation(req: SimulationRequest) -> Dict[str, Any]:
                 if goal.override_asset_id and shortfall > 0:
                     override_asset = next((a for a in assets if a.id == goal.override_asset_id and a.balance > 0), None)
                     if override_asset:
-                        goal_inflated = goal.amount * ((1 + inflation_rate) ** year_idx)
+                        goal_inflated = goal.amount * cumulative_inflation_factor
                         withdrawal = min(override_asset.balance, goal_inflated, shortfall)
                         override_asset.balance -= withdrawal
                         shortfall -= withdrawal
@@ -642,3 +659,70 @@ def _attribute_withdrawal_tax_with_sources(
     elif _is_property_cgt(asset):
         person_cgt_property_gains[pid] += amount
         person_source_property_cgt[pid][src_name] = person_source_property_cgt[pid].get(src_name, 0.0) + amount
+
+def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
+    params = req.monte_carlo_params
+    if not params:
+        params = MonteCarloParams()
+    
+    success_count = 0
+    
+    primary_person = req.plan.people[0]
+    start_age = primary_person.age
+    life_expectancy = req.plan.life_expectancy
+    num_years = life_expectancy - start_age + 1
+    
+    yearly_balances = [[] for _ in range(num_years)]
+    
+    for trial_idx in range(params.num_trials):
+        mc_overrides = []
+        for _ in range(num_years):
+            year_data = {}
+            year_data["inflation"] = random.gauss(params.inflation_mean, params.inflation_std_dev)
+            
+            eq_ret = random.gauss(params.expected_return_equities, params.std_dev_equities)
+            bd_ret = random.gauss(params.expected_return_bonds, params.std_dev_bonds)
+            cs_ret = random.gauss(params.expected_return_cash, params.std_dev_cash)
+            
+            for asset in req.plan.assets:
+                alloc = asset.asset_allocation
+                total_alloc = alloc.equities + alloc.bonds + alloc.cash
+                if total_alloc > 0:
+                    asset_ret = (alloc.equities * eq_ret + alloc.bonds * bd_ret + alloc.cash * cs_ret) / total_alloc
+                else:
+                    asset_ret = asset.annual_growth_rate
+                year_data[asset.id] = asset_ret
+            mc_overrides.append(year_data)
+            
+        res = run_simulation(req, mc_overrides=mc_overrides)
+        timeline = res["timeline"]
+        
+        # A plan fails if there's any year with a deficit
+        failed = any(year.get("deficit", 0) > 0 for year in timeline)
+        if not failed:
+            success_count += 1
+            
+        for idx, year in enumerate(timeline):
+            if idx < num_years:
+                yearly_balances[idx].append(year["total_assets"])
+            
+    percentiles = []
+    for idx in range(num_years):
+        if yearly_balances[idx]:
+            bals = sorted(yearly_balances[idx])
+            p10 = bals[max(0, int(len(bals) * 0.1) - 1)]
+            p50 = bals[max(0, int(len(bals) * 0.5) - 1)]
+            p90 = bals[max(0, int(len(bals) * 0.9) - 1)]
+            age = start_age + idx
+            percentiles.append({
+                "age": age,
+                "p10": p10,
+                "p50": p50,
+                "p90": p90
+            })
+        
+    return {
+        "success_rate": round((success_count / params.num_trials) * 100, 1),
+        "percentiles": percentiles
+    }
+
