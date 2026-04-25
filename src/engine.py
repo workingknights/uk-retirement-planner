@@ -122,9 +122,6 @@ def calculate_total_balance(assets: List[Asset]) -> float:
 def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str, float]]] = None) -> Dict[str, Any]:
     plan = req.plan
     profile = req.profile
-    scenario = None
-    if req.scenario_id:
-        scenario = next((s for s in plan.scenarios if s.id == req.scenario_id), None)
     
     if not plan.people:
         return {"error": "Plan must have at least one person."}
@@ -142,25 +139,26 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
         pid: PENSION_TAX_FREE_LIFETIME_LIMIT for pid in people
     }
 
-    # Clone assets and apply scenario growth offsets
+    # Clone assets
     assets = []
-    growth_offset = scenario.growth_offset if scenario else 0.0
     for a in plan.assets:
         asset_copy = Asset(**a.model_dump())
         assets.append(asset_copy)
 
     yearly_data = []
     
-    # Pre-compute death and divorce years
+    current_calendar_year = 2024
+    
+    # Pre-compute death and divorce years from events
     deaths = {}
     divorces = set()
-    if scenario:
-        for d in scenario.death_events:
-            deaths[d.person_id] = d.year
-        for d in scenario.divorce_events:
-            divorces.add(d.year)
+    for e in plan.events:
+        event_year = current_calendar_year + (e.timing_age - start_age)
+        if e.event_type == 'death' and e.person_id:
+            deaths[e.person_id] = event_year
+        elif e.event_type == 'divorce':
+            divorces.add(event_year)
 
-    current_calendar_year = 2024
     cumulative_inflation_factor = 1.0
     prev_inflation_rate = 0.0
 
@@ -178,7 +176,7 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
         else:
             year_inflation = base_inflation
             
-        current_inflation_rate = (year_inflation + (scenario.inflation_offset if scenario else 0.0)) / 100.0
+        current_inflation_rate = year_inflation / 100.0
         
         if year_idx > 0:
             cumulative_inflation_factor *= (1 + prev_inflation_rate)
@@ -214,14 +212,14 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
                     a.owners = [a.owners[0]]
                     a.owners[0].share = 1.0
 
-        # 1. Required (inflation-adjusted) income & Goals
+        # 1. Required (inflation-adjusted) income & Events
         required_income = plan.desired_annual_income * cumulative_inflation_factor
         
-        goals_this_year = [g for g in plan.goals if g.timing_age == age]
-        total_goals_amount = sum(g.amount * cumulative_inflation_factor for g in goals_this_year)
+        events_this_year = [e for e in plan.events if e.timing_age == age and e.event_type not in ('death', 'divorce')]
+        total_events_amount = sum(e.amount * cumulative_inflation_factor for e in events_this_year)
         
-        # We need to fund required_income + total_goals_amount
-        total_required_funding = required_income + total_goals_amount
+        # We need to fund required_income + total_events_amount
+        total_required_funding = required_income + total_events_amount
 
 
 
@@ -267,7 +265,7 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             else:
                 base_growth = asset.annual_growth_rate
                 
-            growth_rate = base_growth + growth_offset
+            growth_rate = base_growth
             growth = asset.balance * (growth_rate / 100.0)
             asset.balance += growth
             if age < retirement_age:
@@ -299,19 +297,19 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
         # 4. Withdraw from assets to cover income shortfall + goals
         # Only enforce the target lifestyle during retirement. Before retirement, assume living within means (but goals must be funded).
         if age < retirement_age:
-            shortfall = max(0.0, total_goals_amount - generated_income)
+            shortfall = max(0.0, total_events_amount - generated_income)
             required_income = generated_income  # Baseline to actual generated income for lifestyle
         else:
             shortfall = max(0.0, total_required_funding - generated_income)
 
         if shortfall > 0:
-            # First, try to satisfy specific goal overrides
-            for goal in goals_this_year:
-                if goal.override_asset_id and shortfall > 0:
-                    override_asset = next((a for a in assets if a.id == goal.override_asset_id and a.balance > 0), None)
+            # First, try to satisfy specific event overrides
+            for event in events_this_year:
+                if event.override_asset_id and shortfall > 0:
+                    override_asset = next((a for a in assets if a.id == event.override_asset_id and a.balance > 0), None)
                     if override_asset:
-                        goal_inflated = goal.amount * cumulative_inflation_factor
-                        withdrawal = min(override_asset.balance, goal_inflated, shortfall)
+                        event_inflated = event.amount * cumulative_inflation_factor
+                        withdrawal = min(override_asset.balance, event_inflated, shortfall)
                         override_asset.balance -= withdrawal
                         shortfall -= withdrawal
                         generated_income += withdrawal
@@ -598,12 +596,11 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             tax_by_source[k] = round(tax_by_source[k], 2)
 
         # Find any life events occurring this year
-        # we mapped goals to this year, let's include them in life_events list for the UI
-        events_this_year = [g.name for g in plan.goals if g.timing_age == age]
+        events_this_year_ui = [e.name for e in plan.events if e.timing_age == age]
         if dead_this_year:
-            events_this_year.append("Death Event")
+            events_this_year_ui.append("Death Event")
         if current_year in divorces:
-            events_this_year.append("Divorce Event")
+            events_this_year_ui.append("Divorce Event")
 
         # 6. Record state for this year
         year_record = {
@@ -619,7 +616,7 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             "tax_by_source": tax_by_source,
             "shortfall_remaining": max(0.0, total_required_funding - generated_income),
             "tax_breakdown": person_tax,
-            "life_events": events_this_year,
+            "life_events": events_this_year_ui,
         }
         yearly_data.append(year_record)
 

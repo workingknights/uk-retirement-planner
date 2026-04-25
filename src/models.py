@@ -54,13 +54,14 @@ class IncomeSource(BaseModel):
     end_age: int
     person_id: Optional[str] = None  # None = unassigned
 
-class Goal(BaseModel):
+class PlanEvent(BaseModel):
     id: str
     name: str
     amount: float
     timing_age: int  # Primary person's age when this goal occurs
     person_id: Optional[str] = None
     override_asset_id: Optional[str] = None  # if specified, draw from this asset first
+    event_type: str = "custom"  # "retirement", "divorce", "downsizing", "custom"
 
 class UserProfile(BaseModel):
     id: str = "default"
@@ -71,20 +72,6 @@ class UserProfile(BaseModel):
     default_cash_growth: float = 2.0
     default_stock_growth: float = 5.0
 
-class DeathEvent(BaseModel):
-    person_id: str
-    year: int  # Calendar year of death
-
-class DivorceEvent(BaseModel):
-    year: int  # Calendar year of divorce
-
-class Scenario(BaseModel):
-    id: str
-    name: str
-    inflation_offset: float = 0.0
-    growth_offset: float = 0.0
-    death_events: List[DeathEvent] = []
-    divorce_events: List[DivorceEvent] = []
 
 class Plan(BaseModel):
     id: str
@@ -95,8 +82,7 @@ class Plan(BaseModel):
     people: List[Person] = []
     assets: List[Asset]
     incomes: List[IncomeSource]
-    goals: List[Goal] = []
-    scenarios: List[Scenario] = []
+    events: List[PlanEvent] = []
 
 class MonteCarloParams(BaseModel):
     num_trials: int = 100
@@ -112,7 +98,6 @@ class MonteCarloParams(BaseModel):
 class SimulationRequest(BaseModel):
     plan: Plan
     profile: UserProfile
-    scenario_id: Optional[str] = None
     run_monte_carlo: bool = False
     monte_carlo_params: Optional[MonteCarloParams] = None
 

@@ -53,13 +53,14 @@ interface AssetOwnership {
   share: number // 0.0 to 1.0
 }
 
-interface Goal {
-  id: string
+interface PlanEvent {
+  id: str
   name: string
   amount: number
   timing_age: number
   person_id: string | null
   override_asset_id: string | null
+  event_type: string
 }
 
 interface AssetAllocation {
@@ -92,23 +93,7 @@ interface IncomeSource {
   person_id: string | null
 }
 
-interface DeathEvent {
-  person_id: string
-  year: number
-}
 
-interface DivorceEvent {
-  year: number
-}
-
-interface Scenario {
-  id: string
-  name: string
-  inflation_offset: number
-  growth_offset: number
-  death_events: DeathEvent[]
-  divorce_events: DivorceEvent[]
-}
 
 interface Plan {
   id: string
@@ -119,8 +104,7 @@ interface Plan {
   people: Person[]
   assets: Asset[]
   incomes: IncomeSource[]
-  goals: Goal[]
-  scenarios: Scenario[]
+  events: PlanEvent[]
 }
 
 interface UserProfile {
@@ -148,7 +132,6 @@ interface MonteCarloParams {
 interface SimulationRequest {
   plan: Plan
   profile: UserProfile
-  scenario_id: string | null
   run_monte_carlo?: boolean
   monte_carlo_params?: MonteCarloParams
 }
@@ -171,10 +154,9 @@ const defaultPlan: Plan = {
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
     { id: '2', name: 'Final Salary Scheme', type: 'db_pension', amount: 15000, start_age: 60, end_age: 100, person_id: 'p1' }
   ],
-  goals: [
-    { id: '1', name: 'Child Deposit Gift', amount: 50000, timing_age: 60, person_id: 'p1', override_asset_id: null }
-  ],
-  scenarios: []
+  events: [
+    { id: '1', name: 'Child Deposit Gift', amount: 50000, timing_age: 60, person_id: 'p1', override_asset_id: null, event_type: 'custom' }
+  ]
 }
 
 const defaultProfile: UserProfile = {
@@ -193,15 +175,13 @@ function App() {
 
   const [simulationData, setSimulationData] = useState<any>(null)
   const [mcData, setMcData] = useState<any>(null)
-  const [whatIfData, setWhatIfData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(false)
   const [assetsExpanded, setAssetsExpanded] = useState(false)
   const [incomesExpanded, setIncomesExpanded] = useState(false)
-  const [goalsExpanded, setGoalsExpanded] = useState(false)
-  const [whatIfsExpanded, setWhatIfsExpanded] = useState(false)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [topRowExpanded, setTopRowExpanded] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showEventModal, setShowEventModal] = useState(false)
+  const [currentEvent, setCurrentEvent] = useState<PlanEvent | null>(null)
   const [activeTab, setActiveTab] = useState<'charts' | 'table'>('charts')
 
   const [auth, setAuth] = useState<AuthState>({ checked: false, authenticated: false, email: null, local: true })
@@ -391,9 +371,8 @@ function App() {
   const handleSimulate = async () => {
     setLoading(true)
     try {
-      const req: SimulationRequest = { plan, profile, scenario_id: null }
+      const req: SimulationRequest = { plan, profile }
       
-      // 1. Fetch base scenario
       const baseResponse = await apiFetch(`${API_BASE_URL}/api/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -403,32 +382,6 @@ function App() {
       if (baseData.success) {
         setSimulationData(baseData.data.timeline)
       }
-
-      // 2. Fetch what-if scenarios concurrently
-      if (plan.scenarios && plan.scenarios.length > 0) {
-        const whatIfPromises = plan.scenarios.map(async (scenario) => {
-          const scenarioReq: SimulationRequest = { plan, profile, scenario_id: scenario.id }
-          const response = await apiFetch(`${API_BASE_URL}/api/simulate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(scenarioReq)
-          })
-          const data = await response.json()
-          return { id: scenario.id, timeline: data.success ? data.data.timeline : null }
-        })
-
-        const whatIfResults = await Promise.all(whatIfPromises)
-        const newWhatIfData: Record<string, any[]> = {}
-        whatIfResults.forEach(res => {
-          if (res.timeline) {
-            newWhatIfData[res.id] = res.timeline
-          }
-        })
-        setWhatIfData(newWhatIfData)
-      } else {
-        setWhatIfData({}) // clear if none
-      }
-
     } catch (error) {
       console.error('Failed to simulate', error)
     } finally {
@@ -442,7 +395,6 @@ function App() {
       const req: SimulationRequest = { 
         plan, 
         profile, 
-        scenario_id: null,
         run_monte_carlo: true,
         monte_carlo_params: {
           num_trials: 100,
@@ -553,51 +505,42 @@ function App() {
     setPlan(prev => ({ ...prev, incomes: prev.incomes.filter(i => i.id !== id) }))
   }
 
-  const handleAddGoal = () => {
-    const newGoal: Goal = {
+  const handleAddEvent = () => {
+    const newEvent: PlanEvent = {
       id: Math.random().toString(),
-      name: 'New Goal',
-      amount: 10000,
+      name: 'New Event',
+      amount: 0,
       timing_age: plan.people.length > 0 ? plan.people[0].age + 5 : 60,
       person_id: plan.people.length > 0 ? plan.people[0].id : null,
-      override_asset_id: null
+      override_asset_id: null,
+      event_type: 'custom'
     }
-    setPlan(prev => ({ ...prev, goals: [...prev.goals, newGoal] }))
+    setCurrentEvent(newEvent)
+    setShowEventModal(true)
   }
 
-  const handleUpdateGoal = (id: string, field: keyof Goal, value: any) => {
-    setPlan(prev => ({
-      ...prev,
-      goals: prev.goals.map(g => g.id === id ? { ...g, [field]: value } : g)
-    }))
+  const handleEditEvent = (event: PlanEvent) => {
+    setCurrentEvent({ ...event })
+    setShowEventModal(true)
   }
 
-  const handleRemoveGoal = (id: string) => {
-    setPlan(prev => ({ ...prev, goals: prev.goals.filter(g => g.id !== id) }))
+  const handleSaveEvent = (eventToSave: PlanEvent) => {
+    setPlan(prev => {
+      const existing = prev.events.find(e => e.id === eventToSave.id)
+      if (existing) {
+        return { ...prev, events: prev.events.map(e => e.id === eventToSave.id ? eventToSave : e) }
+      } else {
+        return { ...prev, events: [...prev.events, eventToSave] }
+      }
+    })
+    setShowEventModal(false)
+    setCurrentEvent(null)
   }
 
-  const handleAddScenario = () => {
-    if (plan.scenarios.length >= 3) return;
-    const newScenario: Scenario = {
-      id: Math.random().toString(),
-      name: `Scenario ${String.fromCharCode(65 + plan.scenarios.length)}`,
-      inflation_offset: 0,
-      growth_offset: 0,
-      death_events: [],
-      divorce_events: []
-    }
-    setPlan(prev => ({ ...prev, scenarios: [...prev.scenarios, newScenario] }))
-  }
-
-  const handleUpdateScenario = (id: string, field: keyof Scenario, value: any) => {
-    setPlan(prev => ({
-      ...prev,
-      scenarios: prev.scenarios.map(s => s.id === id ? { ...s, [field]: value } : s)
-    }))
-  }
-
-  const handleRemoveScenario = (id: string) => {
-    setPlan(prev => ({ ...prev, scenarios: prev.scenarios.filter(s => s.id !== id) }))
+  const handleRemoveEvent = (id: string) => {
+    setPlan(prev => ({ ...prev, events: prev.events.filter(e => e.id !== id) }))
+    setShowEventModal(false)
+    setCurrentEvent(null)
   }
   const CustomXAxisTick = ({ x, y, payload }: any) => {
     const age = payload.value;
@@ -728,6 +671,13 @@ function App() {
             <span>Settings</span>
           </button>
           <button
+            onClick={handleAddEvent}
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
+          >
+            <Plus size={20} />
+            <span>Add Event</span>
+          </button>
+          <button
             onClick={handleMonteCarlo}
             disabled={loading}
             className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
@@ -817,75 +767,8 @@ function App() {
         )}
       </div>
 
-      <div className={`grid grid-cols-1 gap-8 ${sidebarVisible ? 'lg:grid-cols-4' : 'lg:grid-cols-1'}`}>
-        {sidebarVisible && (
-          <div className="space-y-6 lg:col-span-1 pr-4 lg:border-r border-slate-200">
-
-            <section className="space-y-4 pt-6 border-t border-slate-200">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setGoalsExpanded(!goalsExpanded)}>
-                <div className="flex items-center space-x-2">
-                  {goalsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Goals ({plan.goals.length})</h2>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddGoal(); }} className="text-indigo-600 hover:text-indigo-800 p-1">
-                  <Plus size={20} />
-                </button>
-              </div>
-              {goalsExpanded && plan.goals.map(goal => (
-                <div key={goal.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3 relative group">
-                  <button onClick={() => handleRemoveGoal(goal.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 size={16} />
-                  </button>
-                  <input value={goal.name} onChange={e => handleUpdateGoal(goal.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Goal Name" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block text-xs text-slate-500">
-                      Amount (£)
-                      <input type="number" value={goal.amount} onChange={e => handleUpdateGoal(goal.id, 'amount', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                    <label className="block text-xs text-slate-500">
-                      Timing (Age)
-                      <input type="number" value={goal.timing_age} onChange={e => handleUpdateGoal(goal.id, 'timing_age', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            <section className="space-y-4 pt-6 border-t border-slate-200">
-              <div className="flex justify-between items-center cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors" onClick={() => setWhatIfsExpanded(!whatIfsExpanded)}>
-                <div className="flex items-center space-x-2">
-                  {whatIfsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
-                  <h2 className="text-xl font-semibold text-slate-800">Scenarios ({plan.scenarios.length})</h2>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleAddScenario(); }} disabled={plan.scenarios.length >= 3} className="disabled:text-slate-300 text-indigo-600 hover:text-indigo-800 transition-colors p-1">
-                  <Plus size={20} />
-                </button>
-              </div>
-              {whatIfsExpanded && plan.scenarios.length === 0 && (
-                <p className="text-sm text-slate-500 italic px-2">Add a scenario to compare against the base plan.</p>
-              )}
-              {whatIfsExpanded && plan.scenarios.map(scenario => (
-                <div key={scenario.id} className="bg-slate-50 p-4 rounded-xl shadow-sm border border-slate-300 space-y-3 relative group">
-                  <button onClick={() => handleRemoveScenario(scenario.id)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 size={16} />
-                  </button>
-                  <input value={scenario.name} onChange={e => handleUpdateScenario(scenario.id, 'name', e.target.value)} className="font-semibold text-slate-800 bg-transparent border-none p-0 focus:ring-0 w-full" placeholder="Scenario Name" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block text-xs text-slate-500">
-                      Inflation Offset (%)
-                      <input type="number" step="0.1" value={scenario.inflation_offset} onChange={e => handleUpdateScenario(scenario.id, 'inflation_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                    <label className="block text-xs text-slate-500">
-                      Asset Growth Offset (%)
-                      <input type="number" step="0.1" value={scenario.growth_offset} onChange={e => handleUpdateScenario(scenario.id, 'growth_offset', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-        <div className={`${sidebarVisible ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-8`}>
+      <div className="grid grid-cols-1 gap-8">
+        <div className="space-y-8">
           {!simulationData ? (
             <div className="bg-slate-100 rounded-2xl h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
               <TrendingUp size={48} className="mb-4 text-slate-400" />
@@ -937,9 +820,9 @@ function App() {
                               <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
                             )
                           })}
-                          {plan.goals.map(evt => (
+                          {plan.events.map(evt => (
                             <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
                             </ReferenceLine>
                           ))}
                         </BarChart>
@@ -976,9 +859,9 @@ function App() {
                           <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
 
                           <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Required Income" dot={false} />
-                          {plan.goals.map(evt => (
+                          {plan.events.map(evt => (
                             <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
                             </ReferenceLine>
                           ))}
                         </BarChart>
@@ -1013,9 +896,9 @@ function App() {
                                   <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
                                 )
                               })}
-                              {plan.goals.map(evt => (
+                              {plan.events.map(evt => (
                                 <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
+                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
                                 </ReferenceLine>
                               ))}
                             </BarChart>
@@ -1025,49 +908,7 @@ function App() {
                     )
                   })()}
 
-                  {/* Combined Scenarios Chart */}
-                  {plan.scenarios.length > 0 && Object.keys(whatIfData).length > 0 && (() => {
-                    // Build combined data array
-                    const combinedData = simulationData.map((baseYear: any, index: number) => {
-                      const row: any = { age: baseYear.age, Base: baseYear.total_assets }
-                      plan.scenarios.forEach(scenario => {
-                        const scenarioTimeline = whatIfData[scenario.id]
-                        if (scenarioTimeline && scenarioTimeline[index]) {
-                          row[scenario.name] = scenarioTimeline[index].total_assets
-                        }
-                      })
-                      return row
-                    })
 
-                    const scenarioColors = ['#10b981', '#f59e0b', '#ec4899'] // Emerald, Amber, Pink
-
-                    return (
-                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                        <h3 className="text-lg font-semibold text-slate-800 mb-2">Scenario Comparison (Total Assets)</h3>
-                        <p className="text-xs text-slate-500 mb-4">Comparing the baseline projection with your what-if scenarios.</p>
-                        <div className="h-72">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={combinedData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                              <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                              <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} width={80} />
-                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                              <Legend />
-                              <Line type="monotone" dataKey="Base" stroke="#3b82f6" strokeWidth={3} dot={false} />
-                              {plan.scenarios.map((scenario, idx) => (
-                                <Line key={scenario.id} type="monotone" dataKey={scenario.name} stroke={scenarioColors[idx % scenarioColors.length]} strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                              ))}
-                              {plan.goals.map(evt => (
-                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}>{evt.name}</text>
-                                </ReferenceLine>
-                              ))}
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    )
-                  })()}
                 </div>
               )}
 
@@ -1424,6 +1265,49 @@ function App() {
       )}
 
       {/* Profile Settings Modal */}
+      {showEventModal && currentEvent && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h2 className="text-xl font-bold text-slate-800">Edit Event</h2>
+              <button onClick={() => setShowEventModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={24} /></button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Event Name
+                <input value={currentEvent.name} onChange={e => setCurrentEvent({...currentEvent, name: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border" />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Event Type
+                <select value={currentEvent.event_type} onChange={e => setCurrentEvent({...currentEvent, event_type: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border">
+                  <option value="custom">Custom (e.g. Wedding)</option>
+                  <option value="downsizing">Downsizing</option>
+                  <option value="divorce">Divorce</option>
+                  <option value="death">Death</option>
+                  <option value="retirement">Retirement (Visual Only)</option>
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Amount (£)
+                <p className="text-xs text-slate-500 font-normal">Positive means an expense (e.g. wedding). Negative means income (e.g. cash from downsizing).</p>
+                <input type="number" value={currentEvent.amount} onChange={e => setCurrentEvent({...currentEvent, amount: Number(e.target.value)})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border" />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Timing (Age)
+                <input type="number" value={currentEvent.timing_age} onChange={e => setCurrentEvent({...currentEvent, timing_age: Number(e.target.value)})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border" />
+              </label>
+            </div>
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+              <button onClick={() => handleRemoveEvent(currentEvent.id)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
+              <div className="space-x-3">
+                <button onClick={() => setShowEventModal(false)} className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium">Cancel</button>
+                <button onClick={() => handleSaveEvent(currentEvent)} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow-md shadow-indigo-200">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl flex flex-col max-h-[90vh]">
