@@ -182,6 +182,8 @@ function App() {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile)
 
   const [simulationData, setSimulationData] = useState<any>(null)
+  const [baselinePlan, setBaselinePlan] = useState<Plan | null>(null)
+  const [baselineData, setBaselineData] = useState<any>(null)
   const [mcData, setMcData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [assetsExpanded, setAssetsExpanded] = useState(false)
@@ -386,6 +388,26 @@ function App() {
           leisure_req: (d.expenses_breakdown?.essential || 0) + (d.expenses_breakdown?.leisure || 0)
         }));
         setSimulationData(enrichedTimeline)
+      }
+
+      if (baselinePlan) {
+        const baselineReq: SimulationRequest = { plan: baselinePlan, profile }
+        const baselineResponse = await apiFetch(`${API_BASE_URL}/api/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(baselineReq)
+        })
+        const baselineJson = await baselineResponse.json()
+        if (baselineJson.success) {
+          const enrichedBaseline = baselineJson.data.timeline.map((d: any) => ({
+            ...d,
+            essential_req: d.expenses_breakdown?.essential || 0,
+            leisure_req: (d.expenses_breakdown?.essential || 0) + (d.expenses_breakdown?.leisure || 0)
+          }));
+          setBaselineData(enrichedBaseline)
+        }
+      } else {
+        setBaselineData(null)
       }
     } catch (error) {
       console.error('Failed to simulate', error)
@@ -666,6 +688,14 @@ function App() {
             <Plus size={20} />
             <span>Add Event</span>
           </button>
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          <button
+            onClick={() => baselinePlan ? setBaselinePlan(null) : setBaselinePlan(JSON.parse(JSON.stringify(plan)))}
+            className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all ${baselinePlan ? 'bg-slate-700 hover:bg-slate-800 text-white' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
+            title="Use current plan as a baseline for comparison"
+          >
+            <span>{baselinePlan ? 'Clear Baseline' : 'Set Baseline'}</span>
+          </button>
           <button
             onClick={handleMonteCarlo}
             disabled={loading}
@@ -780,6 +810,29 @@ function App() {
             <>
               {activeTab === 'charts' && (
                 <div className="space-y-8">
+                  {baselineData && simulationData && (
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                      <h3 className="text-lg font-semibold text-slate-800 mb-6">Net Wealth Comparison</h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={simulationData.map((d: any, i: number) => ({
+                            age: d.age,
+                            Current: d.total_assets,
+                            Baseline: baselineData[i]?.total_assets || 0
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Legend />
+                            <Line type="monotone" dataKey="Current" stroke="#4f46e5" strokeWidth={3} dot={false} />
+                            <Line type="monotone" dataKey="Baseline" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
                   {mcData && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                       <div className="flex justify-between items-center mb-6">
@@ -808,68 +861,136 @@ function App() {
 
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h3 className="text-lg font-semibold text-slate-800 mb-6">Asset Balances Over Time</h3>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={simulationData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                          <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                          <Legend />
-                          {plan.assets.map((asset, index) => {
-                            const color = getAssetColor(index);
-                            return (
-                              <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
-                            )
-                          })}
-                          {plan.events.map(evt => (
-                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                            </ReferenceLine>
-                          ))}
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className={`grid ${baselineData ? 'grid-cols-2 gap-4' : 'grid-cols-1'} h-80`}>
+                      <div className="h-full">
+                        {baselineData && <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Current Scenario</h4>}
+                        <ResponsiveContainer width="100%" height={baselineData ? '90%' : '100%'}>
+                          <BarChart data={simulationData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Legend />
+                            {plan.assets.map((asset, index) => {
+                              const color = getAssetColor(index);
+                              return (
+                                <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
+                              )
+                            })}
+                            {plan.events.map(evt => (
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
+                              </ReferenceLine>
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {baselineData && baselinePlan && (
+                        <div className="h-full">
+                          <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Baseline Scenario</h4>
+                          <ResponsiveContainer width="100%" height="90%">
+                            <BarChart data={baselineData}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                              <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
+                              <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Legend />
+                              {baselinePlan.assets.map((asset, index) => {
+                                const color = getAssetColor(index);
+                                return (
+                                  <Bar key={asset.name} dataKey={`asset_balances.${asset.name}`} name={asset.name} stackId="1" fill={color} />
+                                )
+                              })}
+                              {baselinePlan.events.map(evt => (
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
+                                </ReferenceLine>
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h3 className="text-lg font-semibold text-slate-800 mb-6">Income & Withdrawals</h3>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={simulationData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                          <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                          <Legend />
+                    <div className={`grid ${baselineData ? 'grid-cols-2 gap-4' : 'grid-cols-1'} h-80`}>
+                      <div className="h-full">
+                        {baselineData && <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Current Scenario</h4>}
+                        <ResponsiveContainer width="100%" height={baselineData ? '90%' : '100%'}>
+                          <BarChart data={simulationData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Legend />
 
-                          {/* Dynamically map income components from all simulation years */}
-                          {(() => {
-                            if (!simulationData) return null;
-                            const keys = new Set<string>();
-                            simulationData.forEach((year: any) => {
-                              Object.keys(year.income_breakdown).forEach(k => keys.add(k));
-                            });
-                            return Array.from(keys).map((incomeKey) => {
-                              const color = getIncomeColor(incomeKey);
-                              return (
-                                <Bar key={incomeKey} dataKey={`income_breakdown.${incomeKey}`} name={incomeKey} stackId="1" fill={color} />
-                              )
-                            });
-                          })()}
+                            {(() => {
+                              if (!simulationData) return null;
+                              const keys = new Set<string>();
+                              simulationData.forEach((year: any) => {
+                                Object.keys(year.income_breakdown).forEach(k => keys.add(k));
+                              });
+                              return Array.from(keys).map((incomeKey) => {
+                                const color = getIncomeColor(incomeKey);
+                                return (
+                                  <Bar key={incomeKey} dataKey={`income_breakdown.${incomeKey}`} name={incomeKey} stackId="1" fill={color} />
+                                )
+                              });
+                            })()}
 
-                          <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
+                            <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
 
-                          <Line type="step" dataKey="essential_req" stroke="#047857" strokeWidth={2} strokeDasharray="5 5" name="Essential Target" dot={false} />
-                          <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
-                          <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
-                          {plan.events.map(evt => (
-                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                              <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                            </ReferenceLine>
-                          ))}
-                        </BarChart>
-                      </ResponsiveContainer>
+                            <Line type="step" dataKey="essential_req" stroke="#047857" strokeWidth={2} strokeDasharray="5 5" name="Essential Target" dot={false} />
+                            <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
+                            <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
+                            {plan.events.map(evt => (
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
+                              </ReferenceLine>
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {baselineData && baselinePlan && (
+                        <div className="h-full">
+                          <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Baseline Scenario</h4>
+                          <ResponsiveContainer width="100%" height="90%">
+                            <BarChart data={baselineData}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                              <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
+                              <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Legend />
+
+                              {(() => {
+                                const keys = new Set<string>();
+                                baselineData.forEach((year: any) => {
+                                  Object.keys(year.income_breakdown).forEach(k => keys.add(k));
+                                });
+                                return Array.from(keys).map((incomeKey) => {
+                                  const color = getIncomeColor(incomeKey);
+                                  return (
+                                    <Bar key={incomeKey} dataKey={`income_breakdown.${incomeKey}`} name={incomeKey} stackId="1" fill={color} />
+                                  )
+                                });
+                              })()}
+
+                              <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
+
+                              <Line type="step" dataKey="essential_req" stroke="#047857" strokeWidth={2} strokeDasharray="5 5" name="Essential Target" dot={false} />
+                              <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
+                              <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
+                              {baselinePlan.events.map(evt => (
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
+                                </ReferenceLine>
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -885,28 +1006,66 @@ function App() {
                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                         <h3 className="text-lg font-semibold text-slate-800 mb-2">Estimated Tax Liability</h3>
                         <p className="text-xs text-slate-500 mb-4">Income Tax + CGT per person (2024/25 rates, simplified).</p>
-                        <div className="h-72">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={taxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                              <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                              <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-                              <Legend />
-                              {plan.people.map((p, idx) => {
-                                const hue = (idx * 80 + 200) % 360
-                                const color = `hsl(${hue}, 65%, 45%)`
-                                return (
-                                  <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
-                                )
-                              })}
-                              {plan.events.map(evt => (
-                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                                </ReferenceLine>
-                              ))}
-                            </BarChart>
-                          </ResponsiveContainer>
+                        <div className={`grid ${baselineData ? 'grid-cols-2 gap-4' : 'grid-cols-1'} h-72`}>
+                          <div className="h-full">
+                            {baselineData && <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Current Scenario</h4>}
+                            <ResponsiveContainer width="100%" height={baselineData ? '90%' : '100%'}>
+                              <BarChart data={taxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                                <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+                                <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                                <Legend />
+                                {plan.people.map((p, idx) => {
+                                  const hue = (idx * 80 + 200) % 360
+                                  const color = `hsl(${hue}, 65%, 45%)`
+                                  return (
+                                    <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
+                                  )
+                                })}
+                                {plan.events.map(evt => (
+                                  <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                    <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
+                                  </ReferenceLine>
+                                ))}
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          {baselineData && baselinePlan && (() => {
+                            const baselineTaxData = baselineData.map((year: any) => {
+                              const row: any = { age: year.age }
+                              baselinePlan.people.forEach(p => {
+                                row[`tax_${p.name}`] = year.tax_breakdown?.[p.name]?.total ?? 0
+                              })
+                              return row
+                            })
+                            return (
+                              <div className="h-full">
+                                <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Baseline Scenario</h4>
+                                <ResponsiveContainer width="100%" height="90%">
+                                  <BarChart data={baselineTaxData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                    <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
+                                    <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+                                    <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                                    <Legend />
+                                    {baselinePlan.people.map((p, idx) => {
+                                      const hue = (idx * 80 + 200) % 360
+                                      const color = `hsl(${hue}, 65%, 45%)`
+                                      return (
+                                        <Bar key={p.id} dataKey={`tax_${p.name}`} name={`${p.name} Tax`} stackId="1" fill={color} />
+                                      )
+                                    })}
+                                    {baselinePlan.events.map(evt => (
+                                      <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
+                                        <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
+                                      </ReferenceLine>
+                                    ))}
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
                     )
