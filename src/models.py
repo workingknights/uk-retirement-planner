@@ -6,6 +6,11 @@ IncomeSourceType = Literal["state_pension", "db_pension", "employment", "other"]
 WithdrawalStrategy = Literal["sequential", "blended"]
 
 
+class ExpenseProfile(BaseModel):
+    essential: float = 0.0
+    leisure: float = 0.0
+    luxury: float = 0.0
+
 class BlendedStrategyParams(BaseModel):
     """Parameters for the blended tax-optimised withdrawal strategy."""
     isa_drawdown_pct: float = 4.0       # % of ISA balance to draw annually
@@ -78,7 +83,8 @@ class Plan(BaseModel):
     name: str
     retirement_age: int
     life_expectancy: int
-    desired_annual_income: float
+    desired_annual_income: float = 0.0
+    expenses: ExpenseProfile = ExpenseProfile()
     people: List[Person] = []
     assets: List[Asset]
     incomes: List[IncomeSource]

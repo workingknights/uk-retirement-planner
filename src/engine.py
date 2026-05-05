@@ -213,7 +213,10 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
                     a.owners[0].share = 1.0
 
         # 1. Required (inflation-adjusted) income & Events
-        required_income = plan.desired_annual_income * cumulative_inflation_factor
+        base_expenses = plan.expenses.essential + plan.expenses.leisure + plan.expenses.luxury
+        fallback_income = plan.desired_annual_income if base_expenses == 0 else 0
+        total_base = base_expenses if base_expenses > 0 else fallback_income
+        required_income = total_base * cumulative_inflation_factor
         
         events_this_year = [e for e in plan.events if e.timing_age == age and e.event_type not in ('death', 'divorce')]
         total_events_amount = sum(e.amount * cumulative_inflation_factor for e in events_this_year)
@@ -608,6 +611,12 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             "year": current_year,
             "ages": current_ages,
             "required_income": total_required_funding,
+            "expenses_breakdown": {
+                "essential": (plan.expenses.essential or fallback_income) * cumulative_inflation_factor,
+                "leisure": plan.expenses.leisure * cumulative_inflation_factor,
+                "luxury": plan.expenses.luxury * cumulative_inflation_factor,
+                "events": total_events_amount
+            },
             "total_income": generated_income, # renamed properly
             "deficit": max(0.0, total_required_funding - generated_income), # shortfall that couldn't be met
             "total_assets": calculate_total_balance(assets),

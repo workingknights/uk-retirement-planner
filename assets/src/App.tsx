@@ -95,12 +95,19 @@ interface IncomeSource {
 
 
 
+interface ExpenseProfile {
+  essential: number
+  leisure: number
+  luxury: number
+}
+
 interface Plan {
   id: string
   name: string
   retirement_age: number
   life_expectancy: number
   desired_annual_income: number
+  expenses: ExpenseProfile
   people: Person[]
   assets: Asset[]
   incomes: IncomeSource[]
@@ -142,6 +149,7 @@ const defaultPlan: Plan = {
   retirement_age: 60,
   life_expectancy: 90,
   desired_annual_income: 40000,
+  expenses: { essential: 20000, leisure: 15000, luxury: 5000 },
   people: [
     { id: 'p1', name: 'Primary Person', age: 40 }
   ],
@@ -327,6 +335,10 @@ function App() {
       p.events = rawPlan.events || []
     }
 
+    if (!p.expenses) {
+      p.expenses = { essential: p.desired_annual_income || 0, leisure: 0, luxury: 0 }
+    }
+
     // Ensure asset_allocation exists for all assets
     p.assets = (rawPlan.assets || []).map((a: any) => ({
       ...a,
@@ -368,7 +380,12 @@ function App() {
       })
       const baseData = await baseResponse.json()
       if (baseData.success) {
-        setSimulationData(baseData.data.timeline)
+        const enrichedTimeline = baseData.data.timeline.map((d: any) => ({
+          ...d,
+          essential_req: d.expenses_breakdown?.essential || 0,
+          leisure_req: (d.expenses_breakdown?.essential || 0) + (d.expenses_breakdown?.leisure || 0)
+        }));
+        setSimulationData(enrichedTimeline)
       }
     } catch (error) {
       console.error('Failed to simulate', error)
@@ -679,7 +696,7 @@ function App() {
             <h2 className="text-lg font-semibold text-slate-800">Household & Parameters</h2>
           </div>
           <span className="text-xs text-slate-400 hidden sm:inline">
-            {plan.people.length} People, {plan.retirement_age} Retirement, £{plan.desired_annual_income.toLocaleString()} Target
+            {plan.people.length} People, {plan.retirement_age} Retirement, £{((plan.expenses?.essential || 0) + (plan.expenses?.leisure || 0) + (plan.expenses?.luxury || 0) || plan.desired_annual_income).toLocaleString()} Target
           </span>
         </div>
         
@@ -729,10 +746,23 @@ function App() {
               Life Expectancy
               <input type="number" value={plan.life_expectancy} onChange={e => updatePlan('life_expectancy', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
             </label>
-            <label className="block text-sm font-medium text-slate-700 col-span-2">
-              Desired Annual Income (Today's Value)
-              <input type="number" value={plan.desired_annual_income} onChange={e => updatePlan('desired_annual_income', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
-            </label>
+            <div className="col-span-2 space-y-2">
+              <span className="block text-sm font-medium text-slate-700">Annual Expenditure Profile (Today's Value)</span>
+              <div className="grid grid-cols-3 gap-4">
+                <label className="block text-xs font-medium text-slate-500">
+                  Essential Needs
+                  <input type="number" value={plan.expenses?.essential ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, essential: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                </label>
+                <label className="block text-xs font-medium text-slate-500">
+                  Leisure & Lifestyle
+                  <input type="number" value={plan.expenses?.leisure ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, leisure: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                </label>
+                <label className="block text-xs font-medium text-slate-500">
+                  Luxury
+                  <input type="number" value={plan.expenses?.luxury ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, luxury: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                </label>
+              </div>
+            </div>
           </div>
             </section>
           </div>
@@ -830,7 +860,9 @@ function App() {
 
                           <Bar dataKey="deficit" stackId="1" fill="#ef4444" name="Shortfall" />
 
-                          <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Required Income" dot={false} />
+                          <Line type="step" dataKey="essential_req" stroke="#047857" strokeWidth={2} strokeDasharray="5 5" name="Essential Target" dot={false} />
+                          <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
+                          <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
                           {plan.events.map(evt => (
                             <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
                               <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
