@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ReferenceLine, LineChart } from 'recharts'
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ReferenceLine, LineChart, AreaChart, Area } from 'recharts'
 import { Plus, Trash2, TrendingUp, Save, FolderOpen, X, ChevronDown, ChevronUp, LogIn, UserCircle, LogOut, Settings, LayoutGrid, Table } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
@@ -1072,6 +1072,59 @@ function App() {
                   })()}
 
 
+                </div>
+              )}
+
+              {activeTab === 'charts' && (
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-8">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Estate & IHT Projection</h3>
+                  <p className="text-xs text-slate-500 mb-4">Estimated terminal value of joint estate and potential Inheritance Tax liability (assumes 100% spousal exemption on first death).</p>
+                  <div className={`grid ${baselineData ? 'grid-cols-2 gap-4' : 'grid-cols-1'} h-80`}>
+                    <div className="h-full">
+                      {baselineData && <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Current Scenario</h4>}
+                      <ResponsiveContainer width="100%" height={baselineData ? '90%' : '100%'}>
+                        <AreaChart data={simulationData.map((d: any) => ({
+                          ...d,
+                          estate_to_beneficiaries: d.iht_breakdown?.total_estate - d.iht_breakdown?.tax_liability,
+                          iht_liability: d.iht_breakdown?.tax_liability
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                          <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Legend />
+                          <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
+                          <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
+                          {plan.events.map(evt => (
+                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3" />
+                          ))}
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {baselineData && baselinePlan && (
+                      <div className="h-full">
+                        <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Baseline Scenario</h4>
+                        <ResponsiveContainer width="100%" height="90%">
+                          <AreaChart data={baselineData.map((d: any) => ({
+                            ...d,
+                            estate_to_beneficiaries: d.iht_breakdown?.total_estate - d.iht_breakdown?.tax_liability,
+                            iht_liability: d.iht_breakdown?.tax_liability
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
+                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Legend />
+                            <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
+                            <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
+                            {baselinePlan.events.map(evt => (
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3" />
+                            ))}
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

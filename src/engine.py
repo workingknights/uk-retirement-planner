@@ -112,6 +112,44 @@ def _is_property_cgt(asset: Asset) -> bool:
 
 
 # ─────────────────────────────────────────────
+# IHT helpers
+# ─────────────────────────────────────────────
+
+def calculate_iht_liability(assets: List[Asset], num_people: int) -> Dict[str, float]:
+    """Calculates a simplified theoretical IHT liability on the joint estate for a given year."""
+    # Pensions are typically outside the estate for IHT
+    estate_assets = [a for a in assets if a.type != 'pension']
+    total_estate = sum(a.balance for a in estate_assets)
+    property_value = sum(a.balance for a in estate_assets if a.type == 'property')
+    
+    # Assume if 2 people, they are married and unused bands transfer 100% on second death
+    multiplier = min(2, max(1, num_people))
+    
+    base_nrb = 325_000 * multiplier
+    max_rnrb = 175_000 * multiplier
+    
+    # Taper RNRB: £1 lost for every £2 the total estate exceeds £2,000,000
+    taper_threshold = 2_000_000
+    excess_estate = max(0.0, total_estate - taper_threshold)
+    taper_amount = excess_estate / 2.0
+    
+    available_rnrb = max(0.0, max_rnrb - taper_amount)
+    applied_rnrb = min(property_value, available_rnrb)
+    
+    taxable_estate = max(0.0, total_estate - base_nrb - applied_rnrb)
+    tax_liability = taxable_estate * 0.40
+    
+    return {
+        "total_estate": round(total_estate, 2),
+        "property_value": round(property_value, 2),
+        "nrb_applied": round(min(base_nrb, total_estate), 2),
+        "rnrb_applied": round(applied_rnrb, 2),
+        "taxable_estate": round(taxable_estate, 2),
+        "tax_liability": round(tax_liability, 2),
+        "effective_rate": round((tax_liability / total_estate * 100) if total_estate > 0 else 0.0, 2)
+    }
+
+# ─────────────────────────────────────────────
 # Main simulation
 # ─────────────────────────────────────────────
 
@@ -626,6 +664,7 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             "shortfall_remaining": max(0.0, total_required_funding - generated_income),
             "tax_breakdown": person_tax,
             "life_events": events_this_year_ui,
+            "iht_breakdown": calculate_iht_liability(assets, len(plan.people)),
         }
         yearly_data.append(year_record)
 
