@@ -571,11 +571,20 @@ function App() {
   }
   const CustomXAxisTick = ({ x, y, payload }: any) => {
     const age = payload.value;
+    const eventsAtAge = plan.events.filter(e => e.timing_age === age);
+
     if (plan.people.length <= 1) {
       return (
-        <text x={x} y={y + 16} textAnchor="middle" fill="#64748b" fontSize={12}>
-          {age}
-        </text>
+        <g transform={`translate(${x},${y})`}>
+          <text x={0} y={16} textAnchor="middle" fill="#64748b" fontSize={12}>
+            {age}
+          </text>
+          {eventsAtAge.length > 0 && (
+            <text x={0} y={30} textAnchor="middle" fill="#475569" fontSize={14} fontWeight="bold">
+              ♦
+            </text>
+          )}
+        </g>
       )
     }
 
@@ -586,10 +595,15 @@ function App() {
       <g transform={`translate(${x},${y})`}>
         <text x={0} y={16} textAnchor="middle" fill="#334155" fontSize={12} fontWeight="600">{age}</text>
         {plan.people.slice(1).map((p, i) => (
-          <text key={p.id} x={0} y={16 + (i + 1) * 14} textAnchor="middle" fill="#94a3b8" fontSize={10}>
-            {p.name.slice(0,3)}: {p.age + offset}
+          <text key={p.id} x={0} y={16 + (i + 1) * 12} textAnchor="middle" fill="#cbd5e1" fontSize={9}>
+            {p.age + offset}
           </text>
         ))}
+        {eventsAtAge.length > 0 && (
+          <text x={0} y={16 + plan.people.length * 12 + 4} textAnchor="middle" fill="#475569" fontSize={14} fontWeight="bold">
+            ♦
+          </text>
+        )}
       </g>
     )
   }
@@ -601,119 +615,126 @@ function App() {
 
       {/* Auth banner — shown in prod when not yet authenticated */}
       {auth.checked && !auth.local && !auth.authenticated && (
-        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-sm text-amber-800">
+        <div className="flex items-center justify-between bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-700">
           <span>Sign in to save and load plans across sessions.</span>
-          <button
-            onClick={handleSignIn}
-            className="flex items-center space-x-1.5 font-semibold text-amber-900 hover:text-amber-700 transition-colors"
-          >
-            <LogIn size={16} />
-            <span>Sign In</span>
-          </button>
         </div>
       )}
 
       <header className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-700 to-slate-900 bg-clip-text text-transparent">
               UK Retirement Planner
             </h1>
             <p className="text-slate-500 mt-1 hidden sm:block">Plan your future with confidence and clarity.</p>
           </div>
-
-          <div className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl ml-8 border border-slate-200">
-            <button
-              onClick={() => setActiveTab('charts')}
-              className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'charts' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <LayoutGrid size={16} />
-              <span>Charts</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('table')}
-              className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <Table size={16} />
-              <span>Breakdown</span>
-            </button>
-          </div>
         </div>
+        
         <div className="flex items-center space-x-3">
-          {/* User badge — shown when authenticated */}
-          {auth.authenticated && auth.email && (
-            <div className="flex items-center space-x-3 text-sm">
-              <div className="flex items-center space-x-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">
-                <UserCircle size={16} className="text-indigo-500" />
-                <span className="hidden sm:inline max-w-[160px] truncate">{auth.email}</span>
-              </div>
-              <button 
-                onClick={handleSignOut}
-                title="Sign Out"
-                className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-              >
-                <LogOut size={20} />
-              </button>
-            </div>
-          )}
-
           <button
             onClick={() => authEnabled ? setShowLoadModal(true) : undefined}
             disabled={!authEnabled}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
+            className="p-2 text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50"
             title={!authEnabled ? 'Sign in to load plans' : 'Load a saved plan'}
           >
-            <FolderOpen size={20} />
-            <span>Load</span>
+            <FolderOpen size={24} />
           </button>
+          
           <button
             onClick={authEnabled ? handleOpenSaveModal : undefined}
             disabled={!authEnabled}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
+            className="p-2 text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50"
             title={!authEnabled ? 'Sign in to save plans' : 'Save current plan'}
           >
-            <Save size={20} />
-            <span>Save</span>
+            <Save size={24} />
           </button>
+
           <button
             onClick={() => setShowProfileModal(true)}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
+            className="p-2 text-slate-500 hover:text-slate-800 transition-colors"
+            title="Settings"
           >
-            <span>Settings</span>
+            <Settings size={24} />
           </button>
+
+          {/* Login / Logout */}
+          {auth.checked && !auth.local && (
+            auth.authenticated ? (
+              <button 
+                onClick={handleSignOut}
+                title={`Sign Out (${auth.email})`}
+                className="p-2 text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <UserCircle size={24} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSignIn}
+                title="Sign In"
+                className="p-2 text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <UserCircle size={24} />
+              </button>
+            )
+          )}
+
+          <div className="w-px h-6 bg-slate-300 mx-2"></div>
+          
           <button
             onClick={handleAddEvent}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all"
+            className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg font-medium shadow-sm transition-all text-sm"
           >
-            <Plus size={20} />
-            <span>Add Event</span>
+            <Plus size={16} />
+            <span>Event</span>
           </button>
-          <div className="w-px h-8 bg-slate-200 mx-1"></div>
           <button
             onClick={() => baselinePlan ? setBaselinePlan(null) : setBaselinePlan(JSON.parse(JSON.stringify(plan)))}
-            className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all ${baselinePlan ? 'bg-slate-700 hover:bg-slate-800 text-white' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all ${baselinePlan ? 'bg-slate-700 hover:bg-slate-800 text-white' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
             title="Use current plan as a baseline for comparison"
           >
             <span>{baselinePlan ? 'Clear Baseline' : 'Set Baseline'}</span>
           </button>
+        </div>
+      </header>
+
+      {/* Main Row: Switcher and Action Buttons */}
+      <div className="flex flex-col sm:flex-row items-center justify-between bg-slate-100 p-4 rounded-xl border border-slate-200 gap-4">
+        <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
           <button
-            onClick={handleMonteCarlo}
-            disabled={loading}
-            className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-emerald-200 transition-all disabled:opacity-50"
+            onClick={() => setActiveTab('charts')}
+            className={`flex-1 sm:flex-none flex items-center justify-center space-x-2 px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'charts' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            <TrendingUp size={20} />
-            <span>{loading ? 'Running...' : 'Run Monte Carlo'}</span>
+            <LayoutGrid size={16} />
+            <span>Charts</span>
           </button>
+          <button
+            onClick={() => setActiveTab('table')}
+            className={`flex-1 sm:flex-none flex items-center justify-center space-x-2 px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'table' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <Table size={16} />
+            <span>Breakdown</span>
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-4 w-full sm:w-auto">
           <button
             onClick={handleSimulate}
             disabled={loading}
-            className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-200 transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-900 text-white px-8 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
           >
             <TrendingUp size={20} />
-            <span>{loading ? 'Calculating...' : 'Run Simulation'}</span>
+            <span>{loading ? 'Calculating...' : 'Calculate'}</span>
+          </button>
+          <button
+            onClick={handleMonteCarlo}
+            disabled={loading}
+            className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl font-medium shadow-sm transition-all disabled:opacity-50"
+          >
+            <TrendingUp size={20} />
+            <span>{loading ? 'Running...' : 'Stress Test'}</span>
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Top Row: Household & Parameters */}
       <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
@@ -738,7 +759,7 @@ function App() {
             <button onClick={() => {
               const newPerson: Person = { id: Math.random().toString(36), name: 'New Person', age: 40 }
               setPlan(prev => ({ ...prev, people: [...prev.people, newPerson] }))
-            }} className="text-indigo-600 hover:text-indigo-800"><Plus size={20} /></button>
+            }} className="text-blue-600 hover:text-blue-800"><Plus size={20} /></button>
           </div>
           <div className="space-y-3">
             {plan.people.map(person => (
@@ -770,26 +791,26 @@ function App() {
               <div className="grid grid-cols-2 gap-4">
             <label className="block text-sm font-medium text-slate-700">
               Retirement Age
-              <input type="number" value={plan.retirement_age} onChange={e => updatePlan('retirement_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+              <input type="number" value={plan.retirement_age} onChange={e => updatePlan('retirement_age', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
             </label>
             <label className="block text-sm font-medium text-slate-700">
               Life Expectancy
-              <input type="number" value={plan.life_expectancy} onChange={e => updatePlan('life_expectancy', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+              <input type="number" value={plan.life_expectancy} onChange={e => updatePlan('life_expectancy', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
             </label>
             <div className="col-span-2 space-y-2">
               <span className="block text-sm font-medium text-slate-700">Annual Expenditure Profile (Today's Value)</span>
               <div className="grid grid-cols-3 gap-4">
                 <label className="block text-xs font-medium text-slate-500">
                   Essential Needs
-                  <input type="number" value={plan.expenses?.essential ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, essential: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                  <input type="number" value={plan.expenses?.essential ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, essential: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </label>
                 <label className="block text-xs font-medium text-slate-500">
                   Leisure & Lifestyle
-                  <input type="number" value={plan.expenses?.leisure ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, leisure: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                  <input type="number" value={plan.expenses?.leisure ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, leisure: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </label>
                 <label className="block text-xs font-medium text-slate-500">
                   Luxury
-                  <input type="number" value={plan.expenses?.luxury ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, luxury: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                  <input type="number" value={plan.expenses?.luxury ?? 0} onChange={e => updatePlan('expenses', { ...plan.expenses, luxury: Number(e.target.value) })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </label>
               </div>
             </div>
@@ -837,7 +858,7 @@ function App() {
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                       <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-semibold text-slate-800">Monte Carlo Projection (100 Trials)</h3>
-                        <div className="flex items-center space-x-2 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg">
+                        <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg">
                           <span className="font-bold text-lg">{mcData.success_rate}%</span>
                           <span className="text-sm">Success Rate</span>
                         </div>
@@ -1150,7 +1171,7 @@ function App() {
                               </React.Fragment>
                             ))
                           })()}
-                          <th className="px-4 py-3 font-semibold text-indigo-700 bg-indigo-50 border-x border-slate-200">Total Income</th>
+                          <th className="px-4 py-3 font-semibold text-blue-700 bg-blue-50 border-x border-slate-200">Total Income</th>
                           {plan.people.map(p => (
                             <th key={p.id} className="px-4 py-3 font-semibold">{p.name} Tax</th>
                           ))}
@@ -1179,7 +1200,7 @@ function App() {
                                   </td>
                                 </React.Fragment>
                               ))}
-                              <td className="px-4 py-2 font-semibold text-indigo-700 bg-indigo-50/50 border-x border-slate-200">
+                              <td className="px-4 py-2 font-semibold text-blue-700 bg-blue-50/50 border-x border-slate-200">
                                 £{Number(year.total_income || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                               </td>
                               {plan.people.map(p => (
@@ -1211,7 +1232,7 @@ function App() {
               {assetsExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
               <h2 className="text-2xl font-bold text-slate-800">Assets ({plan.assets.length})</h2>
             </div>
-            <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded-lg">
+            <button onClick={(e) => { e.stopPropagation(); handleAddAsset(); }} className="text-blue-600 hover:text-blue-800 p-1 bg-blue-50 rounded-lg">
               <Plus size={24} />
             </button>
           </div>
@@ -1361,7 +1382,7 @@ function App() {
               {incomesExpanded ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
               <h2 className="text-2xl font-bold text-slate-800">Income Sources ({plan.incomes.length})</h2>
             </div>
-            <button onClick={(e) => { e.stopPropagation(); handleAddIncome(); }} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded-lg">
+            <button onClick={(e) => { e.stopPropagation(); handleAddIncome(); }} className="text-blue-600 hover:text-blue-800 p-1 bg-blue-50 rounded-lg">
               <Plus size={24} />
             </button>
           </div>
@@ -1449,7 +1470,7 @@ function App() {
               <button 
                 onClick={handleSavePlan} 
                 disabled={!saveName.trim()} 
-                className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${confirmOverwrite ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${confirmOverwrite ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {confirmOverwrite ? "Confirm Overwrite" : "Save"}
               </button>
@@ -1531,7 +1552,7 @@ function App() {
               <button onClick={() => handleRemoveEvent(currentEvent.id)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
               <div className="space-x-3">
                 <button onClick={() => setShowEventModal(false)} className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium">Cancel</button>
-                <button onClick={() => handleSaveEvent(currentEvent)} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow-md shadow-indigo-200">Save</button>
+                <button onClick={() => handleSaveEvent(currentEvent)} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-md shadow-blue-200">Save</button>
               </div>
             </div>
           </div>
@@ -1551,15 +1572,15 @@ function App() {
                 <div className="grid grid-cols-2 gap-4">
                   <label className="block text-sm font-medium text-slate-700">
                     Default Inflation Rate (%)
-                    <input type="number" step="0.1" value={profile.default_inflation_rate} onChange={e => updateProfile('default_inflation_rate', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                    <input type="number" step="0.1" value={profile.default_inflation_rate} onChange={e => updateProfile('default_inflation_rate', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                   </label>
                   <label className="block text-sm font-medium text-slate-700">
                     Default Cash Growth (%)
-                    <input type="number" step="0.1" value={profile.default_cash_growth} onChange={e => updateProfile('default_cash_growth', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                    <input type="number" step="0.1" value={profile.default_cash_growth} onChange={e => updateProfile('default_cash_growth', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                   </label>
                   <label className="block text-sm font-medium text-slate-700">
                     Default Stock Growth (%)
-                    <input type="number" step="0.1" value={profile.default_stock_growth} onChange={e => updateProfile('default_stock_growth', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
+                    <input type="number" step="0.1" value={profile.default_stock_growth} onChange={e => updateProfile('default_stock_growth', Number(e.target.value))} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                   </label>
                 </div>
               </section>
@@ -1573,13 +1594,13 @@ function App() {
                     if (strategy === 'blended' && !profile.blended_params) {
                       updateProfile('blended_params', { isa_drawdown_pct: 4.0, pension_drawdown_pct: 5.0, isa_topup_from_pension: 20000 });
                     }
-                  }} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                  }} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
                     <option value="sequential">Sequential (Priority Order)</option>
                     <option value="blended">Blended Tax-Optimised</option>
                   </select>
                 </label>
                 {profile.withdrawal_strategy === 'blended' && profile.blended_params && (
-                  <div className="mt-3 p-4 bg-indigo-50 rounded-lg border border-indigo-200 space-y-3">
+                  <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
                     <div className="grid grid-cols-3 gap-3">
                       <label className="block text-xs text-slate-700 font-medium">
                         ISA Drawdown (%)
