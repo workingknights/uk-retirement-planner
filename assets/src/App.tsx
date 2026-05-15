@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ReferenceLine, LineChart, AreaChart, Area } from 'recharts'
-import { Plus, Trash2, TrendingUp, Save, FolderOpen, X, ChevronDown, ChevronUp, LogIn, UserCircle, LogOut, Settings, LayoutGrid, Table } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, Save, FolderOpen, X, ChevronDown, ChevronUp, UserCircle, Settings, LayoutGrid, Table } from 'lucide-react'
 import React from 'react'
 import { API_BASE_URL } from './config'
 
