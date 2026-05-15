@@ -97,7 +97,7 @@ jobs:
           channelId: live
           projectId: ${{ steps.auth.outputs.project_id }}
 
-      - name: Deploy Firestore Rules
-        run: npx --yes firebase-tools deploy --only firestore:rules --project ${{ steps.auth.outputs.project_id }} --non-interactive
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+      # - name: Deploy Firestore Rules
+      #   run: npx --yes firebase-tools deploy --only firestore:rules --project ${{ steps.auth.outputs.project_id }} --non-interactive
+      #   env:
+      #     GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
