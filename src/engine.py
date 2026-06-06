@@ -655,13 +655,13 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
                 "luxury": plan.expenses.luxury * cumulative_inflation_factor,
                 "events": total_events_amount
             },
-            "total_income": generated_income, # renamed properly
-            "deficit": max(0.0, total_required_funding - generated_income), # shortfall that couldn't be met
+            "total_income": generated_income,
+            "deficit": max(0.0, (total_events_amount if age < retirement_age else total_required_funding) - generated_income),
             "total_assets": calculate_total_balance(assets),
             "asset_balances": {a.name: a.balance for a in assets},
             "income_breakdown": income_breakdown,
             "tax_by_source": tax_by_source,
-            "shortfall_remaining": max(0.0, total_required_funding - generated_income),
+            "shortfall_remaining": max(0.0, (total_events_amount if age < retirement_age else total_required_funding) - generated_income),
             "tax_breakdown": person_tax,
             "life_events": events_this_year_ui,
             "iht_breakdown": calculate_iht_liability(assets, len(plan.people)),
