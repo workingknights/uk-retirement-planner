@@ -31,8 +31,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       return !name.includes("Target");
     });
     
-    // Sort in ascending order by value
-    filteredPayload.sort((a: any, b: any) => (a.value || 0) - (b.value || 0));
+    // Sort in descending order by value (largest first)
+    filteredPayload.sort((a: any, b: any) => (b.value || 0) - (a.value || 0));
 
     return (
       <div className="bg-white/95 p-3 border border-slate-200 rounded-lg shadow-xl text-sm min-w-[200px] backdrop-blur-md">
@@ -487,7 +487,11 @@ function App() {
 
   // Consistent color generation based on index for assets and incomes
   const getAssetColor = (index: number) => {
-    const hue = (index * 137.5) % 360;
+    let hue = (index * 137.5) % 360;
+    // Protect red shades (approx 340-360 and 0-20) for Shortfall
+    if (hue > 340 || hue < 20) {
+      hue = (hue + 40) % 360;
+    }
     return `hsl(${hue}, 70%, 50%)`;
   }
 
@@ -501,7 +505,11 @@ function App() {
 
     // Otherwise, generate a distinct color for the standalone income source
     const incomeIndex = plan.incomes.findIndex(i => i.name === name);
-    const hue = ((incomeIndex + plan.assets.length) * 137.5) % 360;
+    let hue = ((incomeIndex + plan.assets.length) * 137.5) % 360;
+    // Protect red shades for Shortfall
+    if (hue > 340 || hue < 20) {
+      hue = (hue + 40) % 360;
+    }
     return `hsl(${hue}, 60%, 45%)`;
   }
 
