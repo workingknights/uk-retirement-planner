@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import SimulationRequest, UserProfile
-from engine import run_simulation, run_monte_carlo
+from engine import run_simulation, run_monte_carlo, run_stress_tests
 from auth import verify_token, get_user_email
 
 from google.cloud import firestore
@@ -73,7 +73,9 @@ async def me(request: Request):
 @app.post("/api/simulate")
 async def simulate(req: SimulationRequest):
     try:
-        if req.run_monte_carlo:
+        if req.run_stress_tests:
+            result = run_stress_tests(req)
+        elif req.run_monte_carlo:
             result = run_monte_carlo(req)
         else:
             result = run_simulation(req)

@@ -4,6 +4,7 @@ from typing import List, Literal, Optional, Dict
 AssetType = Literal["isa", "pension", "general", "cash", "property", "rsu", "premium_bonds"]
 IncomeSourceType = Literal["state_pension", "db_pension", "employment", "other"]
 WithdrawalStrategy = Literal["sequential", "blended"]
+StressTestScenario = Literal["market_crash", "high_inflation", "stagnant_growth", "interest_rate_shock"]
 
 
 class ExpenseProfile(BaseModel):
@@ -101,9 +102,14 @@ class MonteCarloParams(BaseModel):
     inflation_mean: float = 2.5
     inflation_std_dev: float = 1.5
 
+class StressTestParams(BaseModel):
+    scenarios: List[StressTestScenario] = ["market_crash", "high_inflation", "stagnant_growth", "interest_rate_shock"]
+
 class SimulationRequest(BaseModel):
     plan: Plan
     profile: UserProfile
     run_monte_carlo: bool = False
     monte_carlo_params: Optional[MonteCarloParams] = None
+    run_stress_tests: bool = False
+    stress_test_params: Optional[StressTestParams] = None
 

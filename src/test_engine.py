@@ -15,7 +15,7 @@ def test_basic_growth():
                 Asset(id="1", name="Test ISA", type="isa", balance=100000, annual_growth_rate=5.0, annual_contribution=0)
             ],
             incomes=[],
-            goals=[]
+            events=[]
         ),
         profile=UserProfile(
             withdrawal_priority=["isa"],
@@ -77,8 +77,8 @@ def test_goals_and_deficit():
                 Asset(id="1", name="Cash", type="cash", balance=10000, annual_growth_rate=0.0, annual_contribution=0)
             ],
             incomes=[],
-            goals=[
-                Goal(id="g1", name="Wedding", amount=15000, timing_age=41) # short by 5k
+            events=[
+                PlanEvent(id="g1", name="Wedding", amount=15000, timing_age=41) # short by 5k
             ]
         ),
         profile=UserProfile(
@@ -116,7 +116,7 @@ def test_individual_ages_and_pensions():
                 # P2 gets pension at their age 64, which is year 2 (primary age 61)
                 IncomeSource(id="1", name="P2 DB", type="db_pension", amount=10000, start_age=64, end_age=100, person_id="p2")
             ],
-            goals=[]
+            events=[]
         ),
         profile=UserProfile(default_inflation_rate=0.0)
     )
@@ -129,3 +129,36 @@ def test_individual_ages_and_pensions():
     
     # Year 2 (primary 61, P2 64) -> pension starts!
     assert timeline[1]["total_income"] == 10000
+
+def test_stress_testing():
+    req = SimulationRequest(
+        plan=Plan(
+            id="test_stress",
+            name="Plan Stress",
+            retirement_age=60,
+            life_expectancy=70,
+            desired_annual_income=20000,
+            people=[Person(id="p1", name="P1", age=60)],
+            assets=[
+                Asset(id="1", name="Test ISA", type="isa", balance=500000, annual_growth_rate=7.0, annual_contribution=0)
+            ],
+            incomes=[],
+            events=[]
+        ),
+        profile=UserProfile(
+            withdrawal_priority=["isa"],
+            default_inflation_rate=0.0
+        ),
+        run_stress_tests=True
+    )
+    from models import StressTestParams
+    req.stress_test_params = StressTestParams(scenarios=["market_crash", "stagnant_growth"])
+    
+    from engine import run_stress_tests
+    result = run_stress_tests(req)
+    stress_results = result["stress_tests"]
+    assert len(stress_results) == 2
+    
+    # We just ensure it runs and outputs pass/fail status
+    assert "passed" in stress_results[0]
+    assert "depletion_age" in stress_results[0]

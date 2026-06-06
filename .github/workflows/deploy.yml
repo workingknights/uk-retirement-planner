@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/stress-testing
   workflow_dispatch:
 
 env:

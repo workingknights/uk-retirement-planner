@@ -251,16 +251,23 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
                     a.owners[0].share = 1.0
 
         # 1. Required (inflation-adjusted) income & Events
-        base_expenses = plan.expenses.essential + plan.expenses.leisure + plan.expenses.luxury
-        fallback_income = plan.desired_annual_income if base_expenses == 0 else 0
-        total_base = base_expenses if base_expenses > 0 else fallback_income
-        required_income = total_base * cumulative_inflation_factor
-        
         events_this_year = [e for e in plan.events if e.timing_age == age and e.event_type not in ('death', 'divorce')]
         total_events_amount = sum(e.amount * cumulative_inflation_factor for e in events_this_year)
-        
-        # We need to fund required_income + total_events_amount
-        total_required_funding = required_income + total_events_amount
+
+        if age < retirement_age:
+            # Phase 1: Accumulation
+            required_income = 0.0
+            total_required_funding = total_events_amount
+            fallback_income = 0.0
+        else:
+            # Phase 2: Decumulation
+            base_expenses = plan.expenses.essential + plan.expenses.leisure + plan.expenses.luxury
+            fallback_income = plan.desired_annual_income if base_expenses == 0 else 0
+            total_base = base_expenses if base_expenses > 0 else fallback_income
+            required_income = total_base * cumulative_inflation_factor
+            
+            # We need to fund required_income + total_events_amount
+            total_required_funding = required_income + total_events_amount
 
 
 
@@ -336,10 +343,11 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
                             person_source_dividends[pid][src_name] = person_source_dividends[pid].get(src_name, 0.0) + share_amount
 
         # 4. Withdraw from assets to cover income shortfall + goals
-        # Only enforce the target lifestyle during retirement. Before retirement, assume living within means (but goals must be funded).
         if age < retirement_age:
+            # During accumulation, regular expenses aren't tracked. We only need to fund planned events (if any).
             shortfall = max(0.0, total_events_amount - generated_income)
-            required_income = generated_income  # Baseline to actual generated income for lifestyle
+            # Baseline to actual generated income so it looks neat in the output
+            required_income = generated_income
         else:
             shortfall = max(0.0, total_required_funding - generated_income)
 
@@ -770,4 +778,91 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
         "success_rate": round((success_count / params.num_trials) * 100, 1),
         "percentiles": percentiles
     }
+
+
+def run_stress_tests(req: SimulationRequest) -> Dict[str, Any]:
+    from models import StressTestParams
+    params = req.stress_test_params
+    if not params:
+        params = StressTestParams()
+        
+    primary_person = req.plan.people[0]
+    start_age = primary_person.age
+    life_expectancy = req.plan.life_expectancy
+    retirement_age = req.plan.retirement_age
+    num_years = life_expectancy - start_age + 1
+    
+    results = []
+    
+    for scenario in params.scenarios:
+        mc_overrides = []
+        for year_idx in range(num_years):
+            age = start_age + year_idx
+            
+            # Default to plan rates
+            year_data = {
+                "inflation": req.profile.default_inflation_rate
+            }
+            
+            for asset in req.plan.assets:
+                alloc = asset.asset_allocation
+                total_alloc = alloc.equities + alloc.bonds + alloc.cash
+                
+                # Base returns
+                eq_ret = 7.0
+                bd_ret = 3.0
+                cs_ret = req.profile.default_cash_growth
+                
+                if scenario == "market_crash":
+                    # Market crash in the first year of retirement (-30% equities)
+                    if age == retirement_age:
+                        eq_ret = -30.0
+                elif scenario == "high_inflation":
+                    # First 5 years of retirement have 8% inflation
+                    if retirement_age <= age < retirement_age + 5:
+                        year_data["inflation"] = 8.0
+                elif scenario == "stagnant_growth":
+                    # First 10 years of retirement have 3.5% equity returns
+                    if retirement_age <= age < retirement_age + 10:
+                        eq_ret = 3.5
+                elif scenario == "interest_rate_shock":
+                    # Bond and cash returns drop to 0% for first 5 years of retirement
+                    if retirement_age <= age < retirement_age + 5:
+                        bd_ret = 0.0
+                        cs_ret = 0.0
+                
+                if total_alloc > 0:
+                    asset_ret = (alloc.equities * eq_ret + alloc.bonds * bd_ret + alloc.cash * cs_ret) / total_alloc
+                else:
+                    # If no allocation provided, manipulate the annual_growth_rate directly
+                    if scenario == "market_crash" and age == retirement_age:
+                        asset_ret = -30.0 if asset.type in ("general", "isa", "pension", "rsu") else asset.annual_growth_rate
+                    elif scenario == "stagnant_growth" and retirement_age <= age < retirement_age + 10:
+                        asset_ret = max(0.0, asset.annual_growth_rate / 2.0)
+                    elif scenario == "interest_rate_shock" and retirement_age <= age < retirement_age + 5:
+                        asset_ret = 0.0 if asset.type == "cash" else asset.annual_growth_rate
+                    else:
+                        asset_ret = asset.annual_growth_rate
+                        
+                year_data[asset.id] = asset_ret
+            mc_overrides.append(year_data)
+            
+        res = run_simulation(req, mc_overrides=mc_overrides)
+        timeline = res["timeline"]
+        
+        depletion_age = None
+        passed = True
+        for year in timeline:
+            if year["deficit"] > 0:
+                passed = False
+                depletion_age = year["age"]
+                break
+                
+        results.append({
+            "scenario": scenario,
+            "passed": passed,
+            "depletion_age": depletion_age
+        })
+        
+    return {"stress_tests": results}
 
