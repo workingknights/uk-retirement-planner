@@ -23,6 +23,39 @@ const firebaseApp = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    // Filter out targets
+    let filteredPayload = payload.filter((entry: any) => {
+      const name = entry.name || "";
+      return !name.includes("Target");
+    });
+    
+    // Sort in ascending order by value
+    filteredPayload.sort((a: any, b: any) => (a.value || 0) - (b.value || 0));
+
+    return (
+      <div className="bg-white/95 p-3 border border-slate-200 rounded-lg shadow-xl text-sm min-w-[200px] backdrop-blur-md">
+        <p className="font-semibold text-slate-800 border-b border-slate-100 pb-2 mb-2">Age {label}</p>
+        <div className="space-y-1">
+          {filteredPayload.map((entry: any, index: number) => (
+            <div key={`item-${index}`} className="flex justify-between items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
+                <span className="text-slate-600 truncate max-w-[150px]">{entry.name}</span>
+              </div>
+              <span className="font-medium text-slate-800">
+                £{Number(entry.value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 
 interface AuthState {
   checked: boolean        // has the /api/me fetch completed?
@@ -844,7 +877,7 @@ function App() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             <Line type="monotone" dataKey="Current" stroke="#4f46e5" strokeWidth={3} dot={false} />
                             <Line type="monotone" dataKey="Baseline" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
@@ -869,7 +902,7 @@ function App() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             <Line type="monotone" dataKey="p90" name="90th Percentile" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
                             <Line type="monotone" dataKey="p50" name="Median Outcome" stroke="#3b82f6" strokeWidth={3} dot={false} />
@@ -890,7 +923,7 @@ function App() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             {plan.assets.map((asset, index) => {
                               const color = getAssetColor(index);
@@ -914,7 +947,7 @@ function App() {
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                               <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
                               <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Tooltip content={<CustomTooltip />} />
                               <Legend />
                               {baselinePlan.assets.map((asset, index) => {
                                 const color = getAssetColor(index);
@@ -944,7 +977,7 @@ function App() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Legend />
 
                             {(() => {
@@ -982,7 +1015,7 @@ function App() {
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                               <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
                               <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                              <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                              <Tooltip content={<CustomTooltip />} />
                               <Legend />
 
                               {(() => {
@@ -1035,7 +1068,7 @@ function App() {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                 <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                                 <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                                <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                                <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 {plan.people.map((p, idx) => {
                                   const hue = (idx * 80 + 200) % 360
@@ -1068,7 +1101,7 @@ function App() {
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                     <XAxis dataKey="age" tick={<CustomXAxisTick />} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
                                     <YAxis tickFormatter={(v: number) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                                    <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                                    <Tooltip content={<CustomTooltip />} />
                                     <Legend />
                                     {baselinePlan.people.map((p, idx) => {
                                       const hue = (idx * 80 + 200) % 360
@@ -1112,7 +1145,7 @@ function App() {
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                           <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                           <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                          <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                          <Tooltip content={<CustomTooltip />} />
                           <Legend />
                           <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
                           <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
@@ -1134,7 +1167,7 @@ function App() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, baselinePlan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip formatter={(value: any) => `£${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
                             <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
