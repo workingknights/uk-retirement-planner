@@ -1010,6 +1010,58 @@ function App() {
                           </div>
                         </div>
                       )}
+
+                      {mcData.diagnostics?.sample_fail_trials?.length > 0 && (
+                        <details className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden">
+                          <summary className="flex items-center justify-between p-4 cursor-pointer text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors list-none">
+                            <span>🔍 Debug: Sample Failing Trial Traces ({mcData.diagnostics.sample_fail_trials.length} shown)</span>
+                            <span className="text-xs text-slate-400 font-normal">Click to expand year-by-year breakdown</span>
+                          </summary>
+                          <div className="px-4 pb-4 space-y-6">
+                            {mcData.diagnostics.sample_fail_trials.map((trial: any, ti: number) => (
+                              <div key={ti} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                                <div className="px-4 py-2 bg-red-50 border-b border-red-100">
+                                  <span className="text-xs font-semibold text-red-700">Trial {ti + 1} — First deficit at Age {trial.first_deficit_age}</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="bg-slate-50 border-b border-slate-200">
+                                        <th className="text-left px-3 py-2 text-slate-500 font-medium">Age</th>
+                                        <th className="text-right px-3 py-2 text-slate-500 font-medium">Required</th>
+                                        <th className="text-right px-3 py-2 text-slate-500 font-medium">Generated</th>
+                                        <th className="text-right px-3 py-2 text-slate-500 font-medium">Deficit</th>
+                                        <th className="text-right px-3 py-2 text-slate-500 font-medium">Liquid Assets</th>
+                                        <th className="text-left px-3 py-2 text-slate-500 font-medium">Income Sources</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {trial.years.map((yr: any) => (
+                                        <tr key={yr.age} className={`border-b border-slate-100 ${yr.deficit > 0 ? 'bg-red-50' : ''}`}>
+                                          <td className={`px-3 py-1.5 font-semibold ${yr.deficit > 0 ? 'text-red-700' : 'text-slate-700'}`}>
+                                            {yr.age} {yr.deficit > 0 ? '⚠' : ''}
+                                          </td>
+                                          <td className="text-right px-3 py-1.5 text-slate-600">£{yr.required_income.toLocaleString()}</td>
+                                          <td className="text-right px-3 py-1.5 text-slate-600">£{yr.total_income.toLocaleString()}</td>
+                                          <td className={`text-right px-3 py-1.5 font-medium ${yr.deficit > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                                            {yr.deficit > 0 ? `£${yr.deficit.toLocaleString()}` : '—'}
+                                          </td>
+                                          <td className="text-right px-3 py-1.5 text-slate-600">£{yr.liquid_assets.toLocaleString()}</td>
+                                          <td className="px-3 py-1.5 text-slate-500 max-w-xs">
+                                            {Object.entries(yr.income_sources || {}).map(([k, v]: [string, any]) => (
+                                              <span key={k} className="inline-block bg-slate-100 rounded px-1 mr-1 mb-0.5">{k}: £{v.toLocaleString()}</span>
+                                            ))}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   )}
 

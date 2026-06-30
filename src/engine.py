@@ -783,6 +783,32 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
             else:
                 failure_causes["underfunded_retirement"] += 1
             
+            # Capture the first failing trial's timeline for debug output
+            if not hasattr(run_monte_carlo, "_sample_fail_trial") or len(getattr(run_monte_carlo, "_sample_fail_trials", [])) < 3:
+                pass  # collected below via sample_fail_trials list
+
+        # Collect up to 3 sample failing trial timelines for debugging
+        if "sample_fail_trials" not in locals():
+            sample_fail_trials = []
+        if first_deficit_age is not None and len(sample_fail_trials) < 3:
+            sample_fail_trials.append({
+                "first_deficit_age": first_deficit_age,
+                "years": [
+                    {
+                        "age": y["age"],
+                        "required_income": round(y.get("required_income", 0), 0),
+                        "total_income": round(y.get("total_income", 0), 0),
+                        "deficit": round(y.get("deficit", 0), 0),
+                        "liquid_assets": round(y.get("liquid_assets", 0), 0),
+                        "total_assets": round(y.get("total_assets", 0), 0),
+                        "income_sources": {k: round(v, 0) for k, v in y.get("income_breakdown", {}).items() if v > 0},
+                        "expenses_breakdown": {k: round(v, 0) for k, v in y.get("expenses_breakdown", {}).items()},
+                    }
+                    for y in timeline
+                    if y["age"] >= retirement_age - 2  # only post-accumulation years
+                ]
+            })
+
         for idx, year in enumerate(timeline):
             if idx < num_years:
                 yearly_balances[idx].append(year["total_assets"])
@@ -857,7 +883,8 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
         "diagnostics": {
             "median_depletion_age": median_depletion_age,
             "failure_causes": failure_breakdown,
-            "recommendations": recommendations
+            "recommendations": recommendations,
+            "sample_fail_trials": sample_fail_trials if "sample_fail_trials" in locals() else []
         }
     }
 
