@@ -666,6 +666,7 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             "total_income": generated_income,
             "deficit": max(0.0, (total_events_amount if age < retirement_age else total_required_funding) - generated_income),
             "total_assets": calculate_total_balance(assets),
+            "liquid_assets": sum(a.balance for a in assets if a.is_withdrawable),
             "asset_balances": {a.name: a.balance for a in assets},
             "income_breakdown": income_breakdown,
             "tax_by_source": tax_by_source,
@@ -723,10 +724,25 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
     primary_person = req.plan.people[0]
     start_age = primary_person.age
     life_expectancy = req.plan.life_expectancy
+    retirement_age = req.plan.retirement_age
     num_years = life_expectancy - start_age + 1
     
     yearly_balances = [[] for _ in range(num_years)]
+    yearly_liquid_balances = [[] for _ in range(num_years)]
     
+    depletion_ages = []
+    failure_causes = {
+        "pre_retirement_event": 0,
+        "bridge_gap": 0,
+        "underfunded_retirement": 0
+    }
+    
+    # State pension age fallback
+    state_pension_age = 67
+    for inc in req.plan.incomes:
+        if inc.type == "state_pension":
+            state_pension_age = min(state_pension_age, inc.start_age)
+            
     for trial_idx in range(params.num_trials):
         mc_overrides = []
         for _ in range(num_years):
@@ -750,33 +766,99 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
         res = run_simulation(req, mc_overrides=mc_overrides)
         timeline = res["timeline"]
         
-        # A plan fails if there's any year with a deficit
-        failed = any(year.get("deficit", 0) > 0 for year in timeline)
-        if not failed:
+        first_deficit_age = None
+        for year in timeline:
+            if year.get("deficit", 0) > 0:
+                first_deficit_age = year["age"]
+                break
+                
+        if first_deficit_age is None:
             success_count += 1
+        else:
+            depletion_ages.append(first_deficit_age)
+            if first_deficit_age < retirement_age:
+                failure_causes["pre_retirement_event"] += 1
+            elif first_deficit_age < state_pension_age:
+                failure_causes["bridge_gap"] += 1
+            else:
+                failure_causes["underfunded_retirement"] += 1
             
         for idx, year in enumerate(timeline):
             if idx < num_years:
                 yearly_balances[idx].append(year["total_assets"])
+                yearly_liquid_balances[idx].append(year["liquid_assets"])
             
     percentiles = []
+    liquid_percentiles = []
     for idx in range(num_years):
+        age = start_age + idx
         if yearly_balances[idx]:
             bals = sorted(yearly_balances[idx])
-            p10 = bals[max(0, int(len(bals) * 0.1) - 1)]
-            p50 = bals[max(0, int(len(bals) * 0.5) - 1)]
-            p90 = bals[max(0, int(len(bals) * 0.9) - 1)]
-            age = start_age + idx
             percentiles.append({
                 "age": age,
-                "p10": p10,
-                "p50": p50,
-                "p90": p90
+                "p10": bals[max(0, int(len(bals) * 0.1) - 1)],
+                "p50": bals[max(0, int(len(bals) * 0.5) - 1)],
+                "p90": bals[max(0, int(len(bals) * 0.9) - 1)]
             })
+        if yearly_liquid_balances[idx]:
+            liq_bals = sorted(yearly_liquid_balances[idx])
+            liquid_percentiles.append({
+                "age": age,
+                "p10": liq_bals[max(0, int(len(liq_bals) * 0.1) - 1)],
+                "p50": liq_bals[max(0, int(len(liq_bals) * 0.5) - 1)],
+                "p90": liq_bals[max(0, int(len(liq_bals) * 0.9) - 1)]
+            })
+            
+    total_failures = len(depletion_ages)
+    median_depletion_age = None
+    if depletion_ages:
+        sorted_ages = sorted(depletion_ages)
+        median_depletion_age = sorted_ages[len(sorted_ages) // 2]
+        
+    failure_breakdown = {}
+    if total_failures > 0:
+        failure_breakdown = {
+            k: round((v / total_failures) * 100, 1) for k, v in failure_causes.items()
+        }
+    else:
+        failure_breakdown = {k: 0.0 for k in failure_causes}
+        
+    recommendations = []
+    success_rate = round((success_count / params.num_trials) * 100, 1)
+    if success_rate < 85:
+        primary_cause = max(failure_causes, key=failure_causes.get) if total_failures > 0 else None
+        
+        if primary_cause == "pre_retirement_event":
+            recommendations.append(
+                "A significant portion of failures occur before retirement, likely due to large custom events or goals. "
+                "Consider earmarking specific assets, reducing event amounts, or delaying the timing of these custom events."
+            )
+        elif primary_cause == "bridge_gap":
+            recommendations.append(
+                "Many trials run out of money in early retirement before State Pension kicks in. "
+                "You may have a 'bridging gap' issue. Consider increasing accessible bridge assets (like ISAs or Cash) "
+                "or delaying retirement by a few years to reduce the bridging period."
+            )
+        elif primary_cause == "underfunded_retirement":
+            recommendations.append(
+                "Most failures happen in late retirement, indicating your overall asset base is too small or highly sensitive to inflation. "
+                "Consider increasing regular pension contributions during your working years, reducing your desired retirement income (especially luxury/leisure), "
+                "or opting for a slightly more equity-focused asset allocation to improve long-term growth."
+            )
+    else:
+        recommendations.append(
+            "Your plan shows high resilience! You are on a safe path to retirement under current assumptions."
+        )
         
     return {
-        "success_rate": round((success_count / params.num_trials) * 100, 1),
-        "percentiles": percentiles
+        "success_rate": success_rate,
+        "percentiles": percentiles,
+        "liquid_percentiles": liquid_percentiles,
+        "diagnostics": {
+            "median_depletion_age": median_depletion_age,
+            "failure_causes": failure_breakdown,
+            "recommendations": recommendations
+        }
     }
 
 

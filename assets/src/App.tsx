@@ -218,6 +218,7 @@ function App() {
   const [baselinePlan, setBaselinePlan] = useState<Plan | null>(null)
   const [baselineData, setBaselineData] = useState<any>(null)
   const [mcData, setMcData] = useState<any>(null)
+  const [mcAssetView, setMcAssetView] = useState<'total' | 'liquid'>('liquid')
   const [loading, setLoading] = useState(false)
   const [assetsExpanded, setAssetsExpanded] = useState(false)
   const [incomesExpanded, setIncomesExpanded] = useState(false)
@@ -896,28 +897,119 @@ function App() {
                   )}
 
                   {mcData && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                      <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-semibold text-slate-800">Monte Carlo Projection (100 Trials)</h3>
-                        <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg">
-                          <span className="font-bold text-lg">{mcData.success_rate}%</span>
-                          <span className="text-sm">Success Rate</span>
+                    <div className="space-y-6">
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+                          <div>
+                            <h3 className="text-lg font-semibold text-slate-800">Monte Carlo Projection (100 Trials)</h3>
+                            <p className="text-slate-500 text-xs mt-1">Simulating 100 paths of market volatility and inflation</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                              <button
+                                onClick={() => setMcAssetView('liquid')}
+                                className={`px-3 py-1 rounded-md font-medium transition-all ${mcAssetView === 'liquid' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                              >
+                                Liquid Assets
+                              </button>
+                              <button
+                                onClick={() => setMcAssetView('total')}
+                                className={`px-3 py-1 rounded-md font-medium transition-all ${mcAssetView === 'total' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                              >
+                                Total Wealth
+                              </button>
+                            </div>
+                            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg ${mcData.success_rate >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                              <span className="font-bold text-lg">{mcData.success_rate}%</span>
+                              <span className="text-xs font-semibold">Success Rate</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="h-80">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={mcAssetView === 'liquid' ? mcData.liquid_percentiles : mcData.percentiles}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                              <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
+                              <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Legend />
+                              <Line type="monotone" dataKey="p90" name="90th Percentile" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                              <Line type="monotone" dataKey="p50" name="Median Outcome" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                              <Line type="monotone" dataKey="p10" name="10th Percentile" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                            </LineChart>
+                          </ResponsiveContainer>
                         </div>
                       </div>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={mcData.percentiles}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                            <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
-                            <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Legend />
-                            <Line type="monotone" dataKey="p90" name="90th Percentile" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
-                            <Line type="monotone" dataKey="p50" name="Median Outcome" stroke="#3b82f6" strokeWidth={3} dot={false} />
-                            <Line type="monotone" dataKey="p10" name="10th Percentile" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="3 3" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
+
+                      {mcData.diagnostics && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 md:col-span-1 flex flex-col justify-between">
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4">Depletion Diagnostics</h4>
+                              {mcData.success_rate < 100 ? (
+                                <div className="space-y-4">
+                                  <div>
+                                    <span className="text-slate-500 text-xs block">Typical Depletion Age</span>
+                                    <span className="text-2xl font-bold text-slate-800">Age {mcData.diagnostics.median_depletion_age || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 text-xs block mb-2">Primary Failure Reasons</span>
+                                    <div className="space-y-2 text-xs">
+                                      <div>
+                                        <div className="flex justify-between text-slate-600 mb-1">
+                                          <span>Pre-Retirement Goals</span>
+                                          <span>{mcData.diagnostics.failure_causes.pre_retirement_event}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                          <div className="bg-amber-500 h-full rounded-full" style={{ width: `${mcData.diagnostics.failure_causes.pre_retirement_event}%` }}></div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="flex justify-between text-slate-600 mb-1">
+                                          <span>Early Retirement Bridging</span>
+                                          <span>{mcData.diagnostics.failure_causes.bridge_gap}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                          <div className="bg-red-500 h-full rounded-full" style={{ width: `${mcData.diagnostics.failure_causes.bridge_gap}%` }}></div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="flex justify-between text-slate-600 mb-1">
+                                          <span>Late Retirement Underfunding</span>
+                                          <span>{mcData.diagnostics.failure_causes.underfunded_retirement}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                          <div className="bg-rose-600 h-full rounded-full" style={{ width: `${mcData.diagnostics.failure_causes.underfunded_retirement}%` }}></div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-600">All 100 trials successfully finished without registering any deficit.</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 md:col-span-2">
+                            <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4">Plan Guidance & Recommendations</h4>
+                            <div className="space-y-3">
+                              {mcData.diagnostics.recommendations.map((rec: string, i: number) => (
+                                <div key={i} className={`flex items-start space-x-3 p-3.5 rounded-xl border text-sm ${mcData.success_rate >= 85 ? 'bg-emerald-50/50 border-emerald-100 text-slate-700' : 'bg-amber-50/40 border-amber-100 text-slate-700'}`}>
+                                  <span className="mt-0.5 text-base">{mcData.success_rate >= 85 ? '✅' : '⚠️'}</span>
+                                  <p className="leading-relaxed">{rec}</p>
+                                </div>
+                              ))}
+                              {mcData.success_rate < 85 && (
+                                <div className="text-xs text-slate-400 mt-4 italic border-t border-slate-100 pt-3">
+                                  Tip: Try adjusting your asset allocations to contain more equities for growth, or increase contributions to build a larger bridge fund.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
