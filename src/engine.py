@@ -768,7 +768,9 @@ def run_monte_carlo(req: SimulationRequest) -> Dict[str, Any]:
         
         first_deficit_age = None
         for year in timeline:
-            if year.get("deficit", 0) > 0:
+            # Use a £1 minimum threshold to avoid floating-point rounding errors
+            # being counted as real deficits
+            if year.get("deficit", 0) > 1.0:
                 first_deficit_age = year["age"]
                 break
                 
