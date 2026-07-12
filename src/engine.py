@@ -316,8 +316,17 @@ def run_simulation(req: SimulationRequest, mc_overrides: Optional[List[Dict[str,
             growth_rate = base_growth
             growth = asset.balance * (growth_rate / 100.0)
             asset.balance += growth
-            if age < retirement_age:
-                asset.balance += asset.annual_contribution
+            if asset.annual_contribution > 0:
+                # Determine the effective cutoff age for contributions.
+                # Use contribution_end_age if set, otherwise fall back to retirement_age.
+                contrib_cutoff = asset.contribution_end_age if asset.contribution_end_age is not None else retirement_age
+                # Use the primary owner's current age for the comparison, or the plan age if unowned.
+                if asset.owners:
+                    owner_age = current_ages.get(asset.owners[0].person_id, age)
+                else:
+                    owner_age = age
+                if owner_age < contrib_cutoff:
+                    asset.balance += asset.annual_contribution
 
         # 3b. Attribute GIA dividends (taxable each year regardless of retirement)
         for asset in assets:

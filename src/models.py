@@ -44,6 +44,7 @@ class Asset(BaseModel):
     balance: float
     annual_growth_rate: float
     annual_contribution: float
+    contribution_end_age: Optional[int] = None  # Age at which contributions stop (e.g. RSU grant end). Defaults to retirement_age if not set.
     is_withdrawable: bool = True
     max_annual_withdrawal: float | None = None  # Optional cap, e.g. £15,000 for RSU CGT reasons
     owners: List[AssetOwnership] = []  # empty = unassigned/whole household

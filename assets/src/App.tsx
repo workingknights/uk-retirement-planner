@@ -109,6 +109,7 @@ interface Asset {
   balance: number
   annual_growth_rate: number
   annual_contribution: number
+  contribution_end_age: number | null  // Age at which contributions stop; null = use retirement age
   is_withdrawable: boolean
   max_annual_withdrawal: number | null
   owners: AssetOwnership[]
@@ -187,9 +188,9 @@ const defaultPlan: Plan = {
     { id: 'p1', name: 'Primary Person', age: 40 }
   ],
   assets: [
-    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.8, bonds: 0.2, cash: 0.0 } },
-    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.6, bonds: 0.4, cash: 0.0 } },
-    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.0, bonds: 0.0, cash: 0.0 } }
+    { id: '1', name: 'Workplace Pension', type: 'pension', balance: 150000, annual_growth_rate: 6.0, annual_contribution: 6000, contribution_end_age: null, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.8, bonds: 0.2, cash: 0.0 } },
+    { id: '2', name: 'S&S ISA', type: 'isa', balance: 50000, annual_growth_rate: 5.0, annual_contribution: 10000, contribution_end_age: null, is_withdrawable: true, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.6, bonds: 0.4, cash: 0.0 } },
+    { id: '3', name: 'Primary Residence', type: 'property', balance: 350000, annual_growth_rate: 3.0, annual_contribution: 0, contribution_end_age: null, is_withdrawable: false, max_annual_withdrawal: null, owners: [{ person_id: 'p1', share: 1.0 }], dividend_yield: null, asset_allocation: { equities: 0.0, bonds: 0.0, cash: 0.0 } }
   ],
   incomes: [
     { id: '1', name: 'State Pension', type: 'state_pension', amount: 10600, start_age: 68, end_age: 100, person_id: 'p1' },
@@ -533,6 +534,7 @@ function App() {
       balance: 0,
       annual_growth_rate: 5.0,
       annual_contribution: 0,
+      contribution_end_age: null,
       is_withdrawable: true,
       max_annual_withdrawal: null,
       owners: [],
@@ -1610,6 +1612,16 @@ function App() {
                     <label className="block text-xs text-slate-500">
                       Contrib. (£/yr)
                       <input type="number" value={asset.annual_contribution} onChange={e => handleUpdateAsset(asset.id, 'annual_contribution', Number(e.target.value))} className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm" />
+                    </label>
+                    <label className="block text-xs text-slate-500">
+                      Contrib. End Age
+                      <input
+                        type="number"
+                        placeholder="Retirement"
+                        value={asset.contribution_end_age ?? ''}
+                        onChange={e => handleUpdateAsset(asset.id, 'contribution_end_age', e.target.value === '' ? null : Number(e.target.value))}
+                        className="mt-1 block w-full rounded border-slate-300 p-1.5 border text-sm"
+                      />
                     </label>
                     <label className="flex items-center space-x-2 text-xs text-slate-500 col-span-2 mt-2">
                       <input type="checkbox" checked={asset.is_withdrawable} onChange={e => handleUpdateAsset(asset.id, 'is_withdrawable', e.target.checked)} className="rounded border-slate-300" />
