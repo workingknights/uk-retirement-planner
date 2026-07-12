@@ -703,15 +703,119 @@ function App() {
     };
   };
 
+  // --- Auth gate: show loading or sign-in screen before the planner ---
+  if (!auth.checked) {
+    // Firebase is still resolving the session — show a minimal spinner
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f4c81 100%)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div style={{
+            width: 48, height: 48, border: '4px solid rgba(255,255,255,0.15)',
+            borderTopColor: '#60a5fa', borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite'
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!auth.local && !auth.authenticated) {
+    // User is definitively logged out — show a full sign-in landing page
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center px-6"
+        style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f4c81 100%)' }}
+      >
+        {/* Decorative blobs */}
+        <div style={{
+          position: 'fixed', top: '-10%', right: '-5%', width: 500, height: 500,
+          background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
+          pointerEvents: 'none'
+        }} />
+        <div style={{
+          position: 'fixed', bottom: '-10%', left: '-5%', width: 400, height: 400,
+          background: 'radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%)',
+          pointerEvents: 'none'
+        }} />
+
+        <div className="relative z-10 flex flex-col items-center text-center max-w-lg w-full">
+          {/* Icon badge */}
+          <div style={{
+            width: 72, height: 72, borderRadius: 20,
+            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 20px 40px rgba(59,130,246,0.35)',
+            marginBottom: 28
+          }}>
+            <TrendingUp size={36} color="white" />
+          </div>
+
+          <h1 style={{
+            fontSize: 38, fontWeight: 800, color: 'white',
+            letterSpacing: '-0.5px', lineHeight: 1.15, marginBottom: 12
+          }}>
+            UK Retirement Planner
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 17, lineHeight: 1.6, marginBottom: 40 }}>
+            Model your financial future, stress-test your retirement plan, and visualise your path to financial independence.
+          </p>
+
+          {/* Feature pills */}
+          <div className="flex flex-wrap justify-center gap-2 mb-10">
+            {['Monte Carlo Simulation', 'Tax Modelling', 'Multiple Scenarios', 'Asset Allocation'].map(f => (
+              <span key={f} style={{
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600,
+                padding: '4px 12px', borderRadius: 999
+              }}>{f}</span>
+            ))}
+          </div>
+
+          {/* Sign-in card */}
+          <div style={{
+            background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20,
+            padding: '36px 40px', width: '100%', boxShadow: '0 32px 64px rgba(0,0,0,0.4)'
+          }}>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 20 }}>
+              Sign in with your Google account to access, save and load your plans.
+            </p>
+            <button
+              onClick={handleSignIn}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                width: '100%', padding: '14px 24px', borderRadius: 12,
+                background: 'white', border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 15, color: '#1e293b',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)', transition: 'transform 0.15s, box-shadow 0.15s'
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 28px rgba(0,0,0,0.35)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ''; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)'; }}
+            >
+              {/* Google G logo */}
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              Continue with Google
+            </button>
+          </div>
+
+          <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, marginTop: 24 }}>
+            Your data is stored securely and only accessible to you.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
 
-      {/* Auth banner — shown in prod when not yet authenticated */}
-      {auth.checked && !auth.local && !auth.authenticated && (
-        <div className="flex items-center justify-between bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-700">
-          <span>Sign in to save and load plans across sessions.</span>
-        </div>
-      )}
 
       <header className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
