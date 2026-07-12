@@ -381,6 +381,9 @@ function App() {
       asset_allocation: a.asset_allocation || { equities: 0.0, bonds: 0.0, cash: 0.0 }
     }))
 
+    // Delete legacy goals to prevent resurrecting deleted events on next load
+    delete (p as any).goals
+
     return p
   }
 
