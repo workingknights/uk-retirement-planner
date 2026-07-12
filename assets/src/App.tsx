@@ -574,12 +574,12 @@ function App() {
     setPlan(prev => ({ ...prev, incomes: prev.incomes.filter(i => i.id !== id) }))
   }
 
-  const handleAddEvent = () => {
+  const handleAddEvent = (defaultAge?: number) => {
     const newEvent: PlanEvent = {
       id: Math.random().toString(),
       name: 'New Event',
       amount: 0,
-      timing_age: plan.people.length > 0 ? plan.people[0].age + 5 : 60,
+      timing_age: defaultAge !== undefined ? defaultAge : (plan.people.length > 0 ? plan.people[0].age + 5 : 60),
       person_id: plan.people.length > 0 ? plan.people[0].id : null,
       override_asset_id: null,
       event_type: 'custom'
@@ -650,7 +650,55 @@ function App() {
     )
   }
 
-
+  const renderEventLabel = (evt: PlanEvent, isInteractive: boolean = false) => {
+    return (props: any) => {
+      const { viewBox } = props;
+      if (!viewBox) return null;
+      const { x } = viewBox;
+      const labelText = evt.name;
+      const textWidth = labelText.length * 6 + 16;
+      return (
+        <g>
+          <circle cx={x} cy={14} r={4} fill="#f97316" stroke="#ffffff" strokeWidth={1.5} />
+          <g transform={`translate(${x}, 22)`}>
+            <rect
+              x={-textWidth / 2}
+              y={-14}
+              width={textWidth}
+              height={22}
+              fill="transparent"
+              style={isInteractive ? { cursor: 'pointer' } : undefined}
+              onClick={isInteractive ? () => handleEditEvent(evt) : undefined}
+            />
+            <rect
+              x={-textWidth / 2}
+              y={-11}
+              width={textWidth}
+              height={16}
+              rx={3}
+              fill="#fff7ed"
+              stroke="#fdba74"
+              strokeWidth={1}
+              style={isInteractive ? { cursor: 'pointer' } : undefined}
+              onClick={isInteractive ? () => handleEditEvent(evt) : undefined}
+            />
+            <text
+              x={0}
+              y={1}
+              textAnchor="middle"
+              fill="#c2410c"
+              fontSize={10}
+              fontWeight="600"
+              style={isInteractive ? { cursor: 'pointer', userSelect: 'none' } : { userSelect: 'none' }}
+              onClick={isInteractive ? () => handleEditEvent(evt) : undefined}
+            >
+              {labelText}
+            </text>
+          </g>
+        </g>
+      );
+    };
+  };
 
   return (
     <div className="min-h-screen p-8 max-w-7xl mx-auto space-y-8">
@@ -723,7 +771,7 @@ function App() {
           <div className="w-px h-6 bg-slate-300 mx-2"></div>
           
           <button
-            onClick={handleAddEvent}
+            onClick={() => handleAddEvent()}
             className="flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg font-medium shadow-sm transition-all text-sm"
           >
             <Plus size={16} />
@@ -1084,9 +1132,7 @@ function App() {
                               )
                             })}
                             {plan.events.map(evt => (
-                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                              </ReferenceLine>
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, true)} />
                             ))}
                           </BarChart>
                         </ResponsiveContainer>
@@ -1108,9 +1154,7 @@ function App() {
                                 )
                               })}
                               {baselinePlan.events.map(evt => (
-                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
-                                </ReferenceLine>
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, false)} />
                               ))}
                             </BarChart>
                           </ResponsiveContainer>
@@ -1125,7 +1169,18 @@ function App() {
                       <div className="h-full">
                         {baselineData && <h4 className="text-sm font-semibold text-slate-500 mb-2 text-center">Current Scenario</h4>}
                         <ResponsiveContainer width="100%" height={baselineData ? '90%' : '100%'}>
-                          <BarChart data={simulationData}>
+                          <BarChart 
+                            data={simulationData}
+                            style={{ cursor: 'pointer' }}
+                            onClick={(state) => {
+                              if (state && state.activeLabel !== undefined) {
+                                const clickedAge = Number(state.activeLabel);
+                                if (!isNaN(clickedAge)) {
+                                  handleAddEvent(clickedAge);
+                                }
+                              }
+                            }}
+                          >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="age" tick={<CustomXAxisTick />} tickLine={false} height={40 + Math.max(0, plan.people.length - 1) * 14} />
                             <YAxis tickFormatter={(val: number) => `£${(val / 1000).toFixed(0)}k`} width={80} tick={{ fill: '#64748b' }} tickLine={false} axisLine={false} />
@@ -1152,9 +1207,7 @@ function App() {
                             <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
                             <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
                             {plan.events.map(evt => (
-                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                              </ReferenceLine>
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, true)} />
                             ))}
                           </BarChart>
                         </ResponsiveContainer>
@@ -1189,9 +1242,7 @@ function App() {
                               <Line type="step" dataKey="leisure_req" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" name="Leisure Target" dot={false} />
                               <Line type="step" dataKey="required_income" stroke="#000000" strokeWidth={2} strokeDasharray="5 5" name="Total Target" dot={false} />
                               {baselinePlan.events.map(evt => (
-                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                  <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
-                                </ReferenceLine>
+                                <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, false)} />
                               ))}
                             </BarChart>
                           </ResponsiveContainer>
@@ -1230,9 +1281,7 @@ function App() {
                                   )
                                 })}
                                 {plan.events.map(evt => (
-                                  <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                    <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5} style={{cursor: 'pointer'}} onClick={() => handleEditEvent(evt)}>{evt.name}</text>
-                                  </ReferenceLine>
+                                  <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, true)} />
                                 ))}
                               </BarChart>
                             </ResponsiveContainer>
@@ -1263,9 +1312,7 @@ function App() {
                                       )
                                     })}
                                     {baselinePlan.events.map(evt => (
-                                      <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3">
-                                        <text x={evt.timing_age} y={20} fill="#64748b" fontSize={11} textAnchor="start" dx={5}></text>
-                                      </ReferenceLine>
+                                      <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, false)} />
                                     ))}
                                   </BarChart>
                                 </ResponsiveContainer>
@@ -1302,7 +1349,7 @@ function App() {
                           <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
                           <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
                           {plan.events.map(evt => (
-                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3" />
+                            <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, true)} />
                           ))}
                         </AreaChart>
                       </ResponsiveContainer>
@@ -1324,7 +1371,7 @@ function App() {
                             <Area type="monotone" dataKey="estate_to_beneficiaries" name="Estate to Beneficiaries" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
                             <Area type="monotone" dataKey="iht_liability" name="Potential IHT Liability" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.4} />
                             {baselinePlan.events.map(evt => (
-                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeDasharray="3 3" />
+                              <ReferenceLine key={evt.id} x={evt.timing_age} stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" label={renderEventLabel(evt, false)} />
                             ))}
                           </AreaChart>
                         </ResponsiveContainer>
